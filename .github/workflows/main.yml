@@ -14,6 +14,9 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  APP_DIR: frontend
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,13 +26,19 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
-      - run: npx ng build --configuration production --base-href /${{ github.event.repository.name }}/
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
+      - name: Instalar dependências
+        working-directory: ${{ env.APP_DIR }}
+        run: npm ci
+      - name: Build
+        working-directory: ${{ env.APP_DIR }}
+        run: npx ng build --configuration production --base-href /${{ github.event.repository.name }}/
       - name: Fallback SPA (404.html)
+        working-directory: ${{ env.APP_DIR }}
         run: |
           DIR=$(find dist -name index.html | head -1 | xargs dirname)
           cp "$DIR/index.html" "$DIR/404.html"
-          echo "OUTPUT_DIR=$DIR" >> $GITHUB_ENV
+          echo "OUTPUT_DIR=$APP_DIR/$DIR" >> $GITHUB_ENV
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ env.OUTPUT_DIR }}
