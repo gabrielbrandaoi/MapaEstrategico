@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "referenceYear": 2022,
+  "provider": "IBGE",
+  "sources": [
+    {
+      "file": "municipios-2022.geojson",
+      "url": "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?formato=application/vnd.geo+json&qualidade=maxima&intrarregiao=municipio&periodo=2022",
+      "bytes": 56132164,
+      "sha256": "79b9d6485dc782ac91b2663c9a69bc0f32a726000c4708f9e0f127f21a8bbd67",
+      "retrievedAt": "2026-11-04T20:48:25.390Z"
+    },
+    {
+      "file": "ufs-2022.geojson",
+      "url": "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?formato=application/vnd.geo+json&qualidade=maxima&intrarregiao=UF&periodo=2022",
+      "bytes": 1001279,
+      "sha256": "4435b2e0e62de6d68f5c5387e01efc31655242948ae9434b78a3b5b05582e497",
+      "retrievedAt": "2026-11-04T20:48:25.624Z"
+    }
+  ],
+  "terms": {
+    "url": "https://geoftp.ibge.gov.br/organizacao_do_territorio/malhas_territoriais/malhas_municipais/municipio_2022/",
+    "sha256": "db223ba5ff66f1c6168ab59bc2aa9309b06e5d6f696e4b9b99f387d640b6b8eb",
+    "statement": "Todos os arquivos aqui disponíveis são públicos.",
+    "license": "IBGE public data; no SPDX/Creative Commons designation asserted.",
+    "attribution": "Fonte: IBGE, API de Malhas Geográficas, referência 2022, qualidade máxima. Derivados calculados pelo Mapa Estratégico."
+  },
+  "crs": "Input/output WGS84 longitude/latitude; source API coordinates derived from SIRGAS 2000, no precision beyond source asserted.",
+  "centroid": {
+    "method": "Per-municipality spherical Lambert azimuthal equal-area, authalic radius 6371007.1809 m, projection origin bounding-box centre; signed shoelace areas by ring role; islands weighted by area, holes subtracted; inverse projection.",
+    "input": "Entire downloaded maximum-quality geometry BEFORE local simplification. IBGE API itself provides simplified meshes, not the original shapefile.",
+    "numericalConvergenceLimitMeters": 0.5,
+    "maximumObservedConvergenceMeters": 0.026981815123277297,
+    "decimalPlaces": 6,
+    "count": 5570,
+    "accuracy": "Numerical convergence only; source positional accuracy and projection-dependent centroid definition are not a survey-accuracy guarantee."
+  },
+  "outline": {
+    "method": "Douglas-Peucker in fixed equirectangular metric projection, spherical length scale bound 1/cos(15 deg); all source vertices checked after rounding. Polygon/MultiPolygon, holes and islands retained.",
+    "errorLimitMeters": 1000,
+    "maximumValidatedBoundMeters": 949.7691035559166,
+    "topology": "All 27 UFs checked for ring self-intersections after simplification and rounding; each invalid candidate retries at half tolerance (up to 12 attempts), then preserves the original valid ring without rounding. Invalid source rings cannot be used as fallback: absence of a simple candidate fails generation. The downloaded Amazonas source has pre-existing crossings; its emitted simplified ring passes the same check. Rings simplified independently; not a shared-edge topological dataset; unsuitable for administrative/legal boundary decisions.",
+    "count": 27,
+    "brazil": "Union visually represented by the collection of 27 real UF polygons, including islands. No fabricated bounding polygon."
+  },
+  "outputs": {
+    "municipal-centroids.json": {
+      "sha256": "393be21a965cdf6f7cf3102b3842e5078d660f79a6e78b651d2ce8e370467fbb",
+      "bytes": 180981
+    },
+    "br-ufs.geojson": {
+      "sha256": "2b0c57c031a8f2be32a3fce686ab8928e5bd9ff03120384f445190d806a525ea",
+      "bytes": 308013
+    }
+  }
+}

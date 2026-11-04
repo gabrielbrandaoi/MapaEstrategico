@@ -1,0 +1,188 @@
+﻿@let r = resumo();
+<section class="tutor-summary" aria-labelledby="tutor-summary-title">
+  <header class="tutor-summary__header">
+    <div>
+      <span class="eyebrow">Tutor selecionado</span>
+      <h2 id="tutor-summary-title" tabindex="-1">{{ r.tutor.nome }}</h2>
+      <p>
+        {{ r.tutor.municipio || 'Município não informado' }}
+        @if (r.tutor.ibge6) {
+          <span class="tutor-summary__muted">· IBGE {{ r.tutor.ibge6 }}</span>
+        }
+      </p>
+      @if (r.tutor.cpfProvisorio) {
+        <span class="tutor-summary__flag">Identidade provisória (CPF não confirmado)</span>
+      }
+      @if (!r.tutor.coordenada) {
+        <span class="tutor-summary__flag">Sem localização no mapa</span>
+      }
+    </div>
+    <button class="button button--quiet" type="button" (click)="deselect.emit()">
+      Desmarcar e ver Brasil
+    </button>
+  </header>
+
+  <dl class="tutor-summary__counts">
+    <div>
+      <dt>Bolsistas</dt>
+      <dd>{{ r.quantidadeBolsistas }}</dd>
+    </div>
+    <div>
+      <dt>Vínculos</dt>
+      <dd>{{ r.quantidadeVinculos }}</dd>
+    </div>
+  </dl>
+
+  <table class="tutor-summary__stats">
+    <caption>
+      Distâncias por fonte (mínimo · média · máximo)
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Fonte</th>
+        <th scope="col">Mín.</th>
+        <th scope="col">Média</th>
+        <th scope="col">Máx.</th>
+        <th scope="col">Amostras</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (linha of estatisticas(); track linha.rotulo) {
+        <tr>
+          <th scope="row">{{ linha.rotulo }}</th>
+          <td>{{ formatKm(linha.estatistica.minimo) }}</td>
+          <td>{{ formatKm(linha.estatistica.media) }}</td>
+          <td>{{ formatKm(linha.estatistica.maximo) }}</td>
+          <td>
+            {{ linha.estatistica.amostras }}
+            @if (linha.estatistica.ausentes > 0) {
+              <span class="tutor-summary__muted">({{ linha.estatistica.ausentes }} ausentes)</span>
+            }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+  <p class="tutor-summary__legend">
+    Distâncias geodésicas e rodoviárias usam a coordenada disponível de cada participante:
+    importada da planilha (pode ser precisa, como um endereço) ou centróide municipal
+    (provisório). Com centróides, participantes do mesmo município ficam a 0 km; coordenadas
+    importadas distintas no mesmo município resultam em distância maior que zero.
+  </p>
+
+  @if (r.criterios.length > 0) {
+    <h3>Critérios</h3>
+    <ul class="tutor-summary__tags">
+      @for (criterio of r.criterios; track $index) {
+        <li>{{ criterio }}</li>
+      }
+    </ul>
+  }
+  @if (r.alertas.length > 0) {
+    <h3>Alertas</h3>
+    <ul class="tutor-summary__alerts">
+      @for (alerta of r.alertas; track $index) {
+        <li>{{ alerta }}</li>
+      }
+    </ul>
+  }
+
+  @if (pontosAtencao().length > 0) {
+    <h3>Pontos de atenção</h3>
+    <ul class="tutor-summary__alerts">
+      @for (linha of pontosAtencao(); track linha.vinculo.id) {
+        <li>
+          <strong>{{ linha.bolsista?.nome || 'Bolsista sem cadastro' }}:</strong>
+          @if (linha.vinculo.divergente) {
+            divergência entre km da planilha ({{ formatKm(linha.vinculo.kmPlanilha) }}) e
+            geodésica ({{ formatGeodesica(linha) }});
+          }
+          @if (linha.vinculo.regra50Km) {
+            regra de 50 km aplicada;
+          }
+          @if (linha.vinculo.excede50Km) {
+            acima de 50 km;
+          }
+          @if (linha.vinculo.segundaRodada) {
+            alocado na 2ª rodada.
+          }
+        </li>
+      }
+    </ul>
+  }
+
+  <h3>Vínculos do tutor</h3>
+  <label class="check-control tutor-summary__consent">
+    <input type="checkbox" [checked]="routeConsent()" (change)="onConsentChanged($event)" />
+    <span>
+      Autorizo enviar ao OSRM público a latitude/longitude do tutor e do bolsista do vínculo
+      escolhido.
+      <small
+        >Podem ser coordenadas importadas da planilha (possivelmente precisas, como endereços) ou
+        centróides municipais. Nomes e CPF não são enviados. Esta autorização é a mesma usada em
+        “Relações e rotas”.</small
+      >
+    </span>
+  </label>
+  @if (linhas().length === 0) {
+    <p class="tutor-summary__muted" role="status">Nenhum bolsista vinculado a este tutor.</p>
+  } @else {
+    <div class="table-scroll">
+      <table class="tutor-summary__links">
+        <thead>
+          <tr>
+            <th scope="col">Bolsista</th>
+            <th scope="col">Planilha</th>
+            <th scope="col">Geodésica</th>
+            <th scope="col">Rodoviária</th>
+            <th scope="col">Critério</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (linha of linhas(); track linha.vinculo.id) {
+            <tr [class.is-attention]="linha.vinculo.divergente || linha.vinculo.excede50Km">
+              <td>
+                {{ linha.bolsista?.nome || 'Bolsista sem cadastro' }}
+                <span class="tutor-summary__muted">{{ linha.bolsista?.municipio || '' }}</span>
+                @if (linha.bolsista?.cpfProvisorio) {
+                  <span class="tutor-summary__flag">Identidade provisória</span>
+                }
+              </td>
+              <td>{{ formatKm(linha.vinculo.kmPlanilha) }}</td>
+              <td>{{ formatGeodesica(linha) }}</td>
+              <td>
+                <span>{{ formatRodoviaria(linha.vinculo) }}</span>
+                @if (linha.vinculo.rota?.message && linha.vinculo.rota?.status !== 'success') {
+                  <small class="tutor-summary__error" role="alert">{{
+                    linha.vinculo.rota?.message
+                  }}</small>
+                }
+                @if (linha.carregandoRota) {
+                  <small role="status">Calculando…</small>
+                } @else if (podeCalcular(linha)) {
+                  <button
+                    class="button button--quiet button--small"
+                    type="button"
+                    [disabled]="!routeConsent()"
+                    [attr.aria-label]="
+                      'Calcular rota rodoviária até ' + (linha.bolsista?.nome || 'bolsista')
+                    "
+                    (click)="routeRequested.emit(linha.vinculo.id)"
+                  >
+                    Calcular rota
+                  </button>
+                }
+              </td>
+              <td>
+                {{ linha.vinculo.criterio || '—' }}
+                @if (linha.vinculo.segundaRodada) {
+                  <span class="tutor-summary__tag">2ª rodada</span>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

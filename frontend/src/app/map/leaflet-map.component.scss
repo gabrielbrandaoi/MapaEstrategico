@@ -1,0 +1,17 @@
+:host {
+  display: block;
+  height: 100%;
+  min-height: 420px;
+}
+.map-frame { display: flex; flex-direction: column; height: 100%; min-height: 420px; }
+.map-host { flex: 1 1 auto; width: 100%; min-height: 420px; background: #f0f3f5; z-index: 0; }
+.map-actions { display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem; }
+button { cursor: pointer; padding: .45rem .7rem; border: 1px solid #526b73; border-radius: .3rem; background: white; color: #233d48; }
+button:focus-visible { outline: 3px solid #174e87; outline-offset: 2px; }
+.map-status { margin: 0; padding: .6rem; color: #233d48; background: #e6eff9; }
+.map-error { color: #78251e; background: #fff0ec; }
+.map-legend { padding: .65rem; background: #fff; color: #253b43; font-size: .8rem; }
+.map-legend ul { display: flex; flex-wrap: wrap; gap: .4rem 1rem; padding: 0; margin: 0; list-style: none; }
+.map-legend li { display: flex; gap: .4rem; align-items: baseline; }
+.legend-symbol { font-weight: 800; min-width: 1.7rem; text-align: center; }
+.map-legend p { margin: .4rem 0 0; }

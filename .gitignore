@@ -1,0 +1,18 @@
+# Dados locais
+*.xlsx
+*.xls
+*.csv
+/data-local/
+/uploads/
+/exports/
+
+# Segredos
+.env
+.env.*
+!.env.example
+
+# Angular / Node
+node_modules/
+dist/
+coverage/
+.angular/

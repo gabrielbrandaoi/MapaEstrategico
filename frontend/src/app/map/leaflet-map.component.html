@@ -1,0 +1,29 @@
+<section class="map-frame" aria-label="Mapa estratégico do Brasil">
+  <div class="map-actions">
+    <button type="button" (click)="verBrasil()">Ver Brasil</button>
+    <button type="button" [attr.aria-expanded]="legendaAberta()" (click)="legendaAberta.set(!legendaAberta())">
+      {{ legendaAberta() ? 'Ocultar legenda' : 'Mostrar legenda' }}
+    </button>
+  </div>
+  @if (loading()) {
+    <p class="map-status" role="status">Carregando base geográfica local do Brasil…</p>
+  }
+  @if (baseError(); as error) {
+    <div class="map-status map-error" role="alert">
+      {{ error }} <button type="button" (click)="tentarBase()">Tentar novamente</button>
+    </div>
+  }
+  <div #mapHost class="map-host" aria-label="Mapa de tutores e bolsistas" tabindex="0"></div>
+  @if (legendaAberta()) {
+    <aside class="map-legend" aria-label="Legenda do mapa">
+      <ul>
+        @for (item of legenda; track item.texto) {
+          <li><span class="legend-symbol" [style.color]="item.cor" aria-hidden="true">{{ item.simbolo }}</span>{{ item.texto }}</li>
+        }
+      </ul>
+      <p>Linhas tracejadas = vínculos, não rotas rodoviárias. Distâncias de planilha, geodésica e rodoviária são independentes.</p>
+      <p>Círculos: 50/100 km geodésicos, não cobertura por estrada. Marcadores coincidentes podem ser deslocados apenas visualmente.</p>
+      <p>Coordenadas importadas ou centroides municipais: origem e precisão nos detalhes. Centroides não representam endereço individual.</p>
+    </aside>
+  }
+</section>

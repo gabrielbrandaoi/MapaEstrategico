@@ -1,0 +1,130 @@
+@use './app/app.scss' as app-styles;
+@import 'leaflet/dist/leaflet.css';
+
+:root {
+  color-scheme: light;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #233a49;
+  background: #f5f7f8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+app-root {
+  display: block;
+  min-height: 100vh;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(37, 135, 125, 0.48);
+  outline-offset: 2px;
+}
+
+.participant-marker-container {
+  border: 0;
+  background: transparent;
+}
+
+.participant-marker {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(20, 43, 58, 0.35);
+  font:
+    800 0.68rem/1 system-ui,
+    sans-serif;
+}
+
+.participant-marker--tutor {
+  background: #367cae;
+}
+
+.participant-marker--fellow {
+  background: #278c6c;
+}
+
+.participant-popup strong {
+  color: #203949;
+}
+
+.participant-popup p {
+  margin: 0.3rem 0 0;
+  color: #6c7d85;
+  font-size: 0.72rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Garante que [hidden] vença regras de display (ex.: mapa preservado entre abas). */
+[hidden] {
+  display: none !important;
+}
+
+.map-missing {
+  margin: 0 0 0.6rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #fff6e5;
+  color: #6f4a0f;
+  font-size: 0.8rem;
+}
+
+.tutor-summary-panel {
+  margin-top: 1rem;
+}
+
+.map-missing__title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.map-missing__list {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+}

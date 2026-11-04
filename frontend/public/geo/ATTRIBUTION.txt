@@ -1,0 +1,15 @@
+Fonte: IBGE — API de Malhas Geográficas, referência 2022, qualidade máxima.
+https://servicodados.ibge.gov.br/api/docs/malhas?versao=3
+
+Dados geométricos oficiais; centroides e simplificação calculados pelo Mapa
+Estratégico. Os centroides NÃO são sedes municipais, endereços de participantes,
+pontos garantidamente interiores ou coordenadas de estabelecimentos.
+
+A publicação oficial de downloads declara:
+"Todos os arquivos aqui disponíveis são públicos."
+https://geoftp.ibge.gov.br/organizacao_do_territorio/malhas_territoriais/malhas_municipais/municipio_2022/
+
+Não foi atribuído rótulo CC0/CC-BY/SPDX: a declaração consultada não o especifica.
+A página específica de uso de dados do portal retornou HTTP 403 nesta consulta.
+Consulte proveniência, checksums, método, precisão e limitações em provenance.json
+e docs/geographic-data.md. Não indicado para decisões cadastrais ou limites legais.
