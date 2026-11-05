@@ -6,7 +6,9 @@ import { isPlatformBrowser } from '@angular/common';
 import type { PontoMapa, VinculoMapa } from '../domain/mapa.models';
 import { LeafletLayersService, type LeafletMapSession, type MapaState } from './leaflet-layers.service';
 import { LEAFLET_LOADER } from './leaflet-loader';
-import { MAPA_LEGENDA } from './mapa.config';
+import { MAPA_CONFIG, MAPA_LEGENDA } from './mapa.config';
+import { DEFAULT_ALLOCATION_CONFIG, type AllocationResult } from '../domain/allocation.models';
+import { ALLOCATION_PALETTE } from './allocation-palette';
 
 @Component({
   selector: 'app-leaflet-map',
@@ -17,10 +19,15 @@ import { MAPA_LEGENDA } from './mapa.config';
 })
 export class LeafletMapComponent implements AfterViewInit, OnDestroy {
   readonly pontos = input<readonly PontoMapa[]>([]);
+  readonly simulation = input(false);
+  readonly allocation = input<AllocationResult | null>(null);
+  readonly simulationMinimum = input<1 | 2>(DEFAULT_ALLOCATION_CONFIG.minimoPorTutor);
+  readonly allocationConfig = DEFAULT_ALLOCATION_CONFIG;
+  readonly allocationPalette = ALLOCATION_PALETTE;
   readonly vinculos = input<readonly VinculoMapa[]>([]);
   readonly selectedTutorId = input<string | null>(null);
   readonly show50Km = input(false);
-  readonly show100Km = input(false);
+  readonly show130Km = input(false);
   readonly tilesEnabled = input(false);
   readonly showTutors = input(true);
   readonly showFellows = input(true);
@@ -34,6 +41,7 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
   readonly baseError = signal<string | null>(null);
   readonly legendaAberta = signal(true);
   readonly legenda = MAPA_LEGENDA;
+  readonly fellowColors = MAPA_CONFIG.fellow;
   @ViewChild('mapHost', { static: true }) private readonly mapHost!: ElementRef<HTMLDivElement>;
   private readonly platformId = inject(PLATFORM_ID);
   private readonly layers = inject(LeafletLayersService);
@@ -108,9 +116,11 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
   private state(): MapaState {
     return {
       pontos: this.pontos(), vinculos: this.vinculos(), selectedTutorId: this.selectedTutorId(),
-      show50Km: this.show50Km(), show100Km: this.show100Km(), tilesEnabled: this.tilesEnabled(),
+      show50Km: this.show50Km(), show130Km: this.show130Km(), tilesEnabled: this.tilesEnabled(),
       showTutors: this.showTutors(), showFellows: this.showFellows(), showLinks: this.showLinks(),
       alertsOnly: this.alertsOnly(), unallocatedOnly: this.unallocatedOnly(), resetKey: this.resetKey(),
+      simulation: this.simulation(), allocation: this.allocation(),
+      simulationMinimum: this.simulationMinimum(),
     };
   }
 }

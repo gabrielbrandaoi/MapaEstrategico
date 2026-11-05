@@ -15,3 +15,18 @@ button:focus-visible { outline: 3px solid #174e87; outline-offset: 2px; }
 .map-legend li { display: flex; gap: .4rem; align-items: baseline; }
 .legend-symbol { font-weight: 800; min-width: 1.7rem; text-align: center; }
 .map-legend p { margin: .4rem 0 0; }
+.simulation-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  margin: 0.2rem 0.5rem 0.2rem 0;
+  color: #fff;
+  font-weight: 700;
+}
+
+.simulation-symbol--active { border-radius: 50%; }
+.simulation-symbol--dismissed { border-radius: 2px; }
+.simulation-symbol--below { border-radius: 25%; }
+.simulation-symbol--fellow { border-radius: 50%; }

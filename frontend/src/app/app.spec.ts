@@ -4,11 +4,14 @@ import { By } from '@angular/platform-browser';
 import { of, Subject, throwError } from 'rxjs';
 import { ImportBatch, Participant, ProximityPair, RoadRoute } from './domain/models';
 import { CenarioMapa, PontoMapa, VinculoMapa } from './domain/mapa.models';
+import type { AllocationResult } from './domain/allocation.models';
 import { App, pageWindow } from './app';
 import { ReportExportService } from './reports/report-export.service';
 import { ExcelWorkbookService } from './importing/excel-workbook.service';
 import { MapProjectionService } from './geolocation/map-projection.service';
 import { LeafletMapComponent } from './map/leaflet-map.component';
+import { SimulationsComponent } from './simulations/simulations.component';
+import type { SimulationScenario } from './map/allocation-presentation';
 import { ROUTING_PROVIDER } from './routing/routing-provider';
 import { vi } from 'vitest';
 
@@ -19,7 +22,7 @@ class LeafletMapStub {
   readonly vinculos = input<readonly VinculoMapa[]>([]);
   readonly selectedTutorId = input<string | null>(null);
   readonly show50Km = input(false);
-  readonly show100Km = input(false);
+  readonly show130Km = input(false);
   readonly tilesEnabled = input(false);
   readonly showTutors = input(true);
   readonly showFellows = input(true);
@@ -27,8 +30,18 @@ class LeafletMapStub {
   readonly alertsOnly = input(false);
   readonly unallocatedOnly = input(false);
   readonly resetKey = input(0);
+  readonly simulation = input(false);
+  readonly allocation = input<AllocationResult | null>(null);
+  readonly simulationMinimum = input<1 | 2>(1);
   readonly tutorSelected = output<string | null>();
   readonly pontoSelected = output<PontoMapa>();
+}
+
+@Component({ selector: 'app-simulations', standalone: true, template: '<p>Distribuição de tutores</p>' })
+class SimulationsStub {
+  readonly scenarios = input<readonly SimulationScenario[]>([]);
+  readonly participants = input<readonly Participant[]>([]);
+  readonly loading = input(false);
 }
 
 /** Projeção sintética derivada do lote real importado (mesmos IDs, centróide fictício). */
@@ -103,8 +116,8 @@ describe('App', () => {
       ],
     })
       .overrideComponent(App, {
-        remove: { imports: [LeafletMapComponent] },
-        add: { imports: [LeafletMapStub] },
+        remove: { imports: [LeafletMapComponent, SimulationsComponent] },
+        add: { imports: [LeafletMapStub, SimulationsStub] },
       })
       .compileComponents();
   });
@@ -123,12 +136,149 @@ describe('App', () => {
     fixture.detectChanges();
   }
 
+  it('separates the distribution tab from the map and explicitly selects map scenarios', async () => {
+    vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue({
+      fileName: 'simulacao-sintetica.csv',
+      sheets: [{
+        name: 'Dados',
+        rows: [
+          ['tipo', 'nome', 'latitude', 'longitude'],
+          ...Array.from({ length: 7 }, (_, index) =>
+            ['tutor', `Tutor sintético ${index}`, -20 - index * 0.01, -40]),
+          ...Array.from({ length: 13 }, (_, index) =>
+            ['bolsista', `Bolsista sintético ${index}`, -20 - index * 0.005, -40]),
+        ],
+      }],
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await importWorkbook(fixture, 'simulacao-sintetica.csv');
+    const root: HTMLElement = fixture.nativeElement;
+    const map = mapStub(fixture);
+    expect(root.querySelector('#allocation-title')).toBeNull();
+    expect(root.querySelector('#simulation-minimum')).toBeNull();
+    expect(root.querySelector('.kpi-grid')).not.toBeNull();
+    expect(map.simulation()).toBe(true);
+    expect(map.simulationMinimum()).toBe(1);
+    function selectMap(value: string): void {
+      const select = root.querySelector<HTMLSelectElement>('#map-scenario');
+      if (!select) throw new Error('Seletor do mapa ausente.');
+      select.value = value;
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+    }
+
+    selectMap('2');
+    expect(map.simulation()).toBe(true);
+    expect(map.simulationMinimum()).toBe(2);
+    const simulatedLinks = mapStub(fixture).vinculos();
+    expect(simulatedLinks).toHaveLength(13);
+    expect(new Set(simulatedLinks.map((link) => link.bolsistaId)).size).toBe(13);
+    expect(simulatedLinks.every((link) => link.kmPlanilha === null && link.rota === null))
+      .toBe(true);
+    navButton(root, 'Simulações').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const simulations = fixture.debugElement.query(By.directive(SimulationsStub))
+      .componentInstance as SimulationsStub;
+    expect(simulations.scenarios().map((scenario) => scenario.minimum)).toEqual([1, 2]);
+    expect(simulations.participants()).toHaveLength(20);
+    expect(simulations.scenarios()[1].result?.indicators.allocatedFellows).toBe(13);
+    expect(simulations.scenarios()[1].result?.distribution.totalTutors).toBe(7);
+    expect(simulations.scenarios()[1].result?.indicators.dismissedTutors).toBe(2);
+    expect(simulations.scenarios()[1].result?.config.raioMaxKm).toBe(150);
+    expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(true);
+    expect(root.querySelector('.kpi-grid')).toBeNull();
+    expect(root.querySelector('#relationships-title')).toBeNull();
+    expect(mapStub(fixture)).toBe(map);
+    navButton(root, 'Visão geral').click();
+    fixture.detectChanges();
+    expect(map.vinculos()).toEqual(simulatedLinks);
+    expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
+    expect(root.querySelector('app-simulations')).toBeNull();
+    selectMap('imported');
+    expect(mapStub(fixture).vinculos()).toEqual([]);
+    expect(mapStub(fixture)).toBe(map);
+    expect(map.simulation()).toBe(false);
+    expect(map.allocation()).toBeNull();
+    expect(root.querySelector('#allocation-title')).toBeNull();
+    expect(root.querySelector('.kpi-grid')).not.toBeNull();
+    const clearButton = [...root.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.textContent?.trim() === 'Limpar dados');
+    if (!clearButton) throw new Error('Ação de limpar dados ausente.');
+    selectMap('1');
+    clearButton.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector<HTMLSelectElement>('#map-scenario')?.value).toBe('1');
+    expect(map.simulation()).toBe(true);
+    expect(map.allocation()?.tutors).toEqual([]);
+  });
+
+  it('keeps imported links unchanged when visiting the distribution tab', async () => {
+    vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue(RELATIONSHIP_WORKBOOK);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
+    const root: HTMLElement = fixture.nativeElement;
+    const select = root.querySelector<HTMLSelectElement>('#map-scenario');
+    if (!select) throw new Error('Seletor do mapa ausente.');
+    select.value = 'imported';
+    select.dispatchEvent(new Event('change'));
+    navButton(root, 'Visão geral').click();
+    fixture.detectChanges();
+    const map = mapStub(fixture);
+    const importedLinks = map.vinculos();
+    expect(importedLinks).toHaveLength(1);
+    expect(importedLinks[0].kmPlanilha).toBe(3);
+    expect(map.simulation()).toBe(false);
+
+    navButton(root, 'Simulações').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(map.simulation()).toBe(false);
+    expect(map.vinculos()).toEqual(importedLinks);
+    const scenarios = (fixture.debugElement.query(By.directive(SimulationsStub))
+      .componentInstance as SimulationsStub).scenarios();
+    expect(scenarios[0].result?.indicators.dismissedTutors).toBe(1);
+    expect(root.querySelector('#simulations-title')).not.toBeNull();
+    expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(true);
+
+    navButton(root, 'Visão geral').click();
+    fixture.detectChanges();
+    expect(mapStub(fixture)).toBe(map);
+    expect(map.simulation()).toBe(false);
+    expect(map.vinculos()).toEqual(importedLinks);
+    expect(root.querySelector('#simulation-minimum')).toBeNull();
+    expect(root.querySelector('#relationships-title')).toBeNull();
+    expect(root.querySelector('.people-panel')).not.toBeNull();
+  });
+
   it('renders the map on an empty session and keeps the same instance across tabs', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const map = mapStub(fixture);
     expect(map.pontos()).toEqual([]);
     const root: HTMLElement = fixture.nativeElement;
+    const reference = [...root.querySelectorAll<HTMLLabelElement>('label')]
+      .find((label) => label.textContent?.includes('130 km (referência)'))
+      ?.querySelector<HTMLInputElement>('input');
+    if (!reference) throw new Error('Controle do raio de 130 km ausente.');
+    expect(map.show130Km()).toBe(true);
+    reference.click();
+    fixture.detectChanges();
+    expect(map.show130Km()).toBe(false);
+    expect(root.textContent).not.toContain('100 km (referência)');
+    expect(root.querySelector('#simulation-minimum')).toBeNull();
+    navButton(root, 'Simulações').click();
+    fixture.detectChanges();
+    expect(root.querySelector('#simulations-title')).not.toBeNull();
+    expect(root.querySelector('app-simulations')).not.toBeNull();
+    expect((fixture.debugElement.query(By.directive(SimulationsStub))
+      .componentInstance as SimulationsStub).participants()).toEqual([]);
+    expect(root.querySelector('.people-panel')).toBeNull();
+    expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(true);
+    expect(mapStub(fixture)).toBe(map);
     navButton(root, 'Relações e rotas').click();
     fixture.detectChanges();
     expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(true);
@@ -181,6 +331,12 @@ describe('App', () => {
     const initialReset = mapStub(fixture).resetKey();
     await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
 
+    const root: HTMLElement = fixture.nativeElement;
+    const select = root.querySelector<HTMLSelectElement>('#map-scenario');
+    if (!select) throw new Error('Seletor do mapa ausente.');
+    select.value = 'imported';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
     expect(projetar).toHaveBeenCalledWith(
       expect.objectContaining({ fileName: 'vinculos-sinteticos.xlsx' }),
       expect.objectContaining({ fileName: 'vinculos-sinteticos.xlsx' }),
@@ -195,7 +351,6 @@ describe('App', () => {
 
     map.tutorSelected.emit(tutor.id);
     fixture.detectChanges();
-    const root: HTMLElement = fixture.nativeElement;
     const summary = root.querySelector('app-tutor-summary');
     expect(summary?.textContent).toContain('Tutor sintético');
     expect(summary?.textContent?.replace(/\s+/g, ' ')).toContain(
@@ -222,6 +377,42 @@ describe('App', () => {
     expect(root.querySelector('app-tutor-summary')).toBeNull();
   });
 
+  it('does not show the focused tutor status in the selected fellow details', async () => {
+    vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue({
+      fileName: 'detalhes-sinteticos.csv',
+      sheets: [{
+        name: 'Dados',
+        rows: [
+          ['tipo', 'nome', 'latitude', 'longitude'],
+          ['tutor', 'Tutor sintético A', -20, -40],
+          ['tutor', 'Tutor sintético B', -20, -40],
+          ['bolsista', 'Bolsista sintético', -20, -40],
+        ],
+      }],
+    });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await importWorkbook(fixture, 'detalhes-sinteticos.csv');
+    const root: HTMLElement = fixture.nativeElement;
+    const select = root.querySelector<HTMLSelectElement>('#map-scenario');
+    if (!select) throw new Error('Seletor do mapa ausente.');
+    select.value = '1';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    const map = mapStub(fixture);
+    const activeTutor = map.allocation()?.tutors.find((tutor) => tutor.status === 'active');
+    const fellow = map.pontos().find((ponto) => ponto.tipo === 'fellow');
+    if (!activeTutor || !fellow) throw new Error('Participantes sintéticos ausentes.');
+    map.tutorSelected.emit(activeTutor.tutorId);
+    fixture.detectChanges();
+    expect(root.querySelector('.detail-panel')?.textContent).toContain('Simulação mínimo');
+    map.pontoSelected.emit(fellow);
+    fixture.detectChanges();
+    expect(root.querySelector('.detail-panel')?.textContent).toContain(fellow.nome);
+    expect(root.querySelector('.detail-panel')?.textContent).not.toContain('Simulação mínimo');
+    expect(map.selectedTutorId()).toBe(activeTutor.tutorId);
+  });
+
   it('replaces the previous scenario when a new workbook is imported', async () => {
     const read = vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read');
     read.mockResolvedValue(RELATIONSHIP_WORKBOOK);
@@ -241,6 +432,55 @@ describe('App', () => {
     expect(root.querySelectorAll('.import-detailed-report')).toHaveLength(1);
     expect(root.textContent).not.toContain('vinculos-sinteticos.xlsx');
   });
+
+  it.each(['1', '2', 'imported'] as const)(
+    'preserves map scenario %s when replacing a workbook or adding a CSV',
+    async (scenario) => {
+      const read = vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read');
+      read.mockResolvedValue(RELATIONSHIP_WORKBOOK);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
+      const root: HTMLElement = fixture.nativeElement;
+      const map = mapStub(fixture);
+      const select = root.querySelector<HTMLSelectElement>('#map-scenario');
+      if (!select) throw new Error('Seletor do mapa ausente.');
+      select.value = scenario;
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      read.mockResolvedValue({ ...RELATIONSHIP_WORKBOOK, fileName: 'substituta.xlsx' });
+      await importWorkbook(fixture, 'substituta.xlsx');
+      expect(select.value).toBe(scenario);
+      expect(map.simulation()).toBe(scenario !== 'imported');
+      expect(map.simulationMinimum()).toBe(scenario === '2' ? 2 : 1);
+      expect(map.pontos().every((ponto) => ponto.id.startsWith('lote-2'))).toBe(true);
+      if (scenario !== 'imported') {
+        expect(map.allocation()?.config.minimoPorTutor).toBe(Number(scenario));
+        expect(map.allocation()?.tutors).toHaveLength(1);
+      }
+
+      read.mockResolvedValue({
+        fileName: 'adicional.csv',
+        sheets: [{
+          name: 'Dados',
+          rows: [
+            ['tipo', 'nome', 'latitude', 'longitude'],
+            ['tutor', 'Tutor adicional sintético', -20, -40],
+          ],
+        }],
+      });
+      await importWorkbook(fixture, 'adicional.csv');
+      expect(select.value).toBe(scenario);
+      expect(mapStub(fixture)).toBe(map);
+      expect(map.simulation()).toBe(scenario !== 'imported');
+      expect(map.simulationMinimum()).toBe(scenario === '2' ? 2 : 1);
+      expect(map.pontos()).toHaveLength(3);
+      if (scenario !== 'imported') {
+        expect(map.allocation()?.tutors).toHaveLength(2);
+      }
+    },
+  );
 
   it('accumulates simple CSV registrations in the map scenario', async () => {
     vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockImplementation(async (file) => ({
@@ -271,7 +511,10 @@ describe('App', () => {
     await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
     const root: HTMLElement = fixture.nativeElement;
     expect(root.querySelector('.geo-error')?.textContent).toContain('Base municipal indisponível');
-    expect(mapStub(fixture).pontos()).toEqual([]);
+    expect(mapStub(fixture).pontos()).toHaveLength(2);
+    expect(mapStub(fixture).pontos().every((ponto) => ponto.coordenada === null)).toBe(true);
+    expect(mapStub(fixture).allocation()?.links).toEqual([]);
+    expect(mapStub(fixture).allocation()?.tutors[0].status).toBe('below-minimum');
     navButton(root, 'Relações e rotas').click();
     fixture.detectChanges();
     expect(root.querySelectorAll('.imported-relations-table tbody tr')).toHaveLength(1);
@@ -394,10 +637,15 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
+    const root: HTMLElement = fixture.nativeElement;
+    const select = root.querySelector<HTMLSelectElement>('#map-scenario');
+    if (!select) throw new Error('Seletor do mapa ausente.');
+    select.value = 'imported';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
     const tutor = mapStub(fixture).pontos().find((ponto) => ponto.tipo === 'tutor');
     mapStub(fixture).tutorSelected.emit(tutor?.id ?? null);
     fixture.detectChanges();
-    const root: HTMLElement = fixture.nativeElement;
     const calculate = (): HTMLButtonElement | undefined =>
       [...root.querySelectorAll<HTMLButtonElement>('app-tutor-summary button')].find((button) =>
         button.textContent?.includes('Calcular rota'),

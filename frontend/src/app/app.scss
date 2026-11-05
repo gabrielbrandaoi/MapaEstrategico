@@ -357,7 +357,8 @@ h2 {
 .import-panel,
 .import-summary,
 .import-detailed-report,
-.import-alerts {
+.import-alerts,
+.map-scenario-panel {
   margin-bottom: 1.25rem;
   padding: 1.35rem 1.5rem;
 }
@@ -841,7 +842,7 @@ h2 {
   border-radius: 50%;
 }
 
-.check-swatch--100 {
+.check-swatch--130 {
   border-style: dashed;
   border-color: #a97836;
 }

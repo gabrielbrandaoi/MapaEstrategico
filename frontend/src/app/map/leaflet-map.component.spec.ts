@@ -4,6 +4,9 @@ import { vi } from 'vitest';
 import { LeafletLayersService, type LeafletMapSession } from './leaflet-layers.service';
 import { LEAFLET_LOADER, resolverModuloLeaflet, type LeafletModule } from './leaflet-loader';
 import { LeafletMapComponent } from './leaflet-map.component';
+import { simulateAllocation } from '../domain/allocation';
+import { DEFAULT_ALLOCATION_CONFIG } from '../domain/allocation.models';
+import { ALLOCATION_PALETTE } from './allocation-palette';
 
 function fakeSession(): LeafletMapSession {
   return {
@@ -83,5 +86,55 @@ describe('LeafletMapComponent initialization', () => {
 
     expect(session.ajustarAosPontos).toHaveBeenCalledOnce();
     fixture.destroy();
+  });
+
+  it('explains simulation statuses and reflects the selected minimum in the legend', async () => {
+    loader.mockResolvedValue(L);
+    const fixture = TestBed.createComponent(LeafletMapComponent);
+    fixture.componentRef.setInput('simulation', true);
+    fixture.componentRef.setInput('simulationMinimum', 2);
+    fixture.componentRef.setInput('allocation', simulateAllocation([], [], {
+      ...DEFAULT_ALLOCATION_CONFIG, minimoPorTutor: 2,
+    }));
+    fixture.detectChanges();
+    await settle(fixture);
+    const root: HTMLElement = fixture.nativeElement;
+    const legend = root.querySelector('.map-legend');
+    expect(legend?.textContent).toContain('mínimo 2');
+    expect(legend?.textContent).toContain('Tutor dispensado');
+    expect(legend?.textContent).toContain('Tutor abaixo do mínimo');
+    expect(legend?.textContent).toContain('Bolsista sem tutor');
+    expect(legend?.textContent).toContain('arredondada para cima');
+    expect(legend?.textContent).toContain('coordenadas válidas');
+    expect(legend?.textContent).toContain('vínculo simulado');
+    const colorStyle = (color: string): string => {
+      const element = document.createElement('span');
+      element.style.background = color;
+      return element.style.background;
+    };
+    expect((root.querySelector('.simulation-symbol--active') as HTMLElement).style.background)
+      .toBe(colorStyle(ALLOCATION_PALETTE.active));
+    expect((root.querySelector('.simulation-symbol--dismissed') as HTMLElement).style.background)
+      .toBe(colorStyle(ALLOCATION_PALETTE.dismissed));
+    expect((root.querySelector('.simulation-symbol--below') as HTMLElement).style.background)
+      .toBe(colorStyle(ALLOCATION_PALETTE.belowMinimum));
+    expect((root.querySelector('.simulation-symbol--fellow') as HTMLElement).style.background)
+      .toBe(colorStyle(ALLOCATION_PALETTE.unassigned));
+    expect(legend?.textContent).toContain(`${DEFAULT_ALLOCATION_CONFIG.raioMaxKm} km`);
+    expect(legend?.textContent).toContain('vagas esgotadas');
+    expect(legend?.textContent).toContain('geodésicos');
+    expect(legend?.textContent).toContain('não');
+    fixture.componentRef.setInput('simulationMinimum', 1);
+    fixture.componentRef.setInput('allocation', simulateAllocation([], []));
+    fixture.detectChanges();
+    expect(legend?.textContent).toContain('mínimo 1');
+    fixture.destroy();
+  });
+
+  it('exports the shared status palette, including minimum-specific chart colors', () => {
+    expect(ALLOCATION_PALETTE).toEqual({
+      active: '#166534', dismissed: '#7f1d1d', belowMinimum: '#854d0e',
+      unassigned: '#656575', minimum1: '#174e87', minimum2: '#166534',
+    });
   });
 });

@@ -7,13 +7,16 @@ import {
   metricasVinculo, validarBrasilGeoJson,
 } from './leaflet-map.helpers';
 import { BRASIL_BOUNDS, MAPA_CONFIG, regraVisual } from './mapa.config';
+import { DEFAULT_ALLOCATION_CONFIG, type AllocationResult } from '../domain/allocation.models';
+import { TUTOR_STATUS_LABELS } from './allocation-presentation';
+import { ALLOCATION_PALETTE } from './allocation-palette';
 
 export interface MapaState {
   readonly pontos: readonly PontoMapa[];
   readonly vinculos: readonly VinculoMapa[];
   readonly selectedTutorId: string | null;
   readonly show50Km: boolean;
-  readonly show100Km: boolean;
+  readonly show130Km: boolean;
   readonly tilesEnabled: boolean;
   readonly showTutors: boolean;
   readonly showFellows: boolean;
@@ -21,6 +24,9 @@ export interface MapaState {
   readonly alertsOnly: boolean;
   readonly unallocatedOnly: boolean;
   readonly resetKey: number;
+  readonly simulation?: boolean;
+  readonly allocation?: AllocationResult | null;
+  readonly simulationMinimum?: 1 | 2;
 }
 
 interface MapCallbacks {
@@ -167,7 +173,9 @@ export class LeafletMapSession {
   ajustarAosPontos(): void {
     const state = this.state;
     if (this.destroyed || !state) return;
-    const allocated = new Set(state.vinculos.map((v) => v.bolsistaId));
+    const allocated = new Set(state.simulation
+      ? state.allocation?.links.map((link) => link.fellowId) ?? []
+      : state.vinculos.map((v) => v.bolsistaId));
     const coords = state.pontos
       .filter((p) => coordenadaValida(p.coordenada)
         && (p.tipo === 'tutor' ? state.showTutors : state.showFellows)
@@ -264,7 +272,9 @@ export class LeafletMapSession {
     const state = this.state;
     if (!state || !this.host.clientWidth || !this.host.clientHeight || !Number.isFinite(this.map.getZoom())) return;
     for (const group of [this.circles, this.links]) this.clear(group);
-    const allocated = new Set(state.vinculos.map((v) => v.bolsistaId));
+    const allocated = new Set(state.simulation
+      ? state.allocation?.links.map((link) => link.fellowId) ?? []
+      : state.vinculos.map((v) => v.bolsistaId));
     const selectedLinks = state.vinculos.filter((v) => v.tutorId === state.selectedTutorId);
     const linked = new Set(selectedLinks.map((v) => v.bolsistaId));
     const located = state.pontos.filter((p) => coordenadaValida(p.coordenada));
@@ -300,12 +310,20 @@ export class LeafletMapSession {
     if (state.showTutors) {
       for (const tutor of tutors) {
         const selected = tutor.id === state.selectedTutorId;
-        const color = selected ? MAPA_CONFIG.tutor.selected : tutor.alertas.length
+        const allocation = state.allocation?.tutors.find((item) => item.tutorId === tutor.id);
+        const color = state.simulation ? allocation?.status === 'active' ? ALLOCATION_PALETTE.active
+          : allocation?.status === 'dismissed' ? ALLOCATION_PALETTE.dismissed
+            : allocation?.status === 'below-minimum' ? ALLOCATION_PALETTE.belowMinimum : ALLOCATION_PALETTE.unassigned
+          : selected ? MAPA_CONFIG.tutor.selected : tutor.alertas.length
           ? MAPA_CONFIG.tutor.alert : tutor.semBolsista ? MAPA_CONFIG.tutor.empty : MAPA_CONFIG.tutor.normal;
-        const label = `T${tutor.alertas.length ? '!' : tutor.semBolsista ? '∅' : ''}`;
+        const label = state.simulation ? allocation?.status === 'active' ? 'T✓'
+          : allocation?.status === 'dismissed' ? 'T×'
+            : allocation?.status === 'below-minimum' ? 'T!' : 'T?'
+          : `T${tutor.alertas.length ? '!' : tutor.semBolsista ? '∅' : ''}`;
         const key = `tutor:${tutor.id}`;
         const coordinate: L.LatLngTuple = [tutor.coordenada!.latitude, tutor.coordenada!.longitude];
-        this.marker(key, coordinate, offsets.get(key) ?? [0, 0], label, color, selected, `Tutor: ${tutor.nome}`,
+        this.marker(key, coordinate, offsets.get(key) ?? [0, 0], label, color, selected,
+          `Tutor: ${tutor.nome}${state.simulation ? ` — ${this.simulationReason(tutor)}` : ''}`,
           JSON.stringify([tutor.tipo, tutor.nome, tutor.municipio, tutor.semBolsista, tutor.alertas,
             tutor.coordenada?.origem, tutor.coordenada?.fonte, tutor.coordenada?.latitude, tutor.coordenada?.longitude]),
           [tutor], () => this.popup(tutor),
@@ -323,7 +341,8 @@ export class LeafletMapSession {
           const first = group.pontos[0];
           const key = group.chave;
           const coordinate: L.LatLngTuple = [group.coordenada.latitude, group.coordenada.longitude];
-          const title = `${first.municipio ?? 'Município não identificado'} — ${group.pontos.length} bolsista(s)${selected ? ' vinculado(s) ao tutor selecionado' : unallocated ? ' sem vínculo' : ''}`;
+          const title = `${first.municipio ?? 'Município não identificado'} — ${group.pontos.length} bolsista(s)${selected ? ' vinculado(s) ao tutor selecionado' : unallocated ? ' sem vínculo' : ''}`
+            + (state.simulation ? ` — ${group.pontos.map((p) => `${p.nome}: ${this.simulationReason(p)}`).join('; ')}` : '');
           const signature = JSON.stringify([group.estado, first.municipio, group.pontos.map((p) => [
             p.id, p.nome, p.municipio, p.coordenada?.latitude, p.coordenada?.longitude,
             p.coordenada?.origem, p.coordenada?.fonte,
@@ -346,11 +365,14 @@ export class LeafletMapSession {
         this.markerRecords.delete(key);
       }
     }
-    if (state.showLinks && selectedTutor) {
+    if (state.showLinks && (state.simulation || selectedTutor)) {
       const visibleIds = new Set(visible.map((p) => p.id));
-      for (const v of selectedLinks) {
+      for (const v of state.simulation ? state.vinculos : selectedLinks) {
         const fellow = byId.get(v.bolsistaId);
-        if (fellow && visibleIds.has(fellow.id)) this.drawLink(selectedTutor, fellow, v);
+        const tutor = byId.get(v.tutorId);
+        if (tutor && fellow && (!state.simulation || visibleIds.has(tutor.id)) && visibleIds.has(fellow.id)) {
+          this.drawLink(tutor, fellow, v);
+        }
       }
     }
     this.dataDrawn = true;
@@ -361,7 +383,7 @@ export class LeafletMapSession {
     label: string, color: string, selected: boolean, title: string, contentSignature: string,
     points: readonly PontoMapa[], createContent: () => HTMLElement, click: () => void,
   ): void {
-    const signature = JSON.stringify([label, color, selected, title, contentSignature]);
+    const signature = JSON.stringify([label, color, selected, title, contentSignature, this.simulationContext()]);
     const position = this.visualPosition(coordinate, offset);
     const existing = this.markerRecords.get(key);
     if (existing) {
@@ -375,8 +397,13 @@ export class LeafletMapSession {
         existing.layer.options.title = title;
         existing.layer.options.alt = title;
         const element = existing.layer.getElement();
-        if (element) element.title = title;
+        if (element) {
+          element.title = title;
+          element.setAttribute('aria-label', title);
+        }
         existing.layer.bindPopup(createContent(), { maxWidth: 340, autoPan: false });
+        existing.layer.unbindTooltip();
+        if (this.state?.simulation) existing.layer.bindTooltip(this.tooltip(this.markerTooltip(title)));
         existing.layer.off('click').on('click', click);
         existing.signature = signature;
         existing.points = points;
@@ -389,6 +416,7 @@ export class LeafletMapSession {
       zIndexOffset: selected ? 1000 : label.startsWith('T') ? 500 : 0,
     });
     marker.bindPopup(createContent(), { maxWidth: 340, autoPan: false });
+    if (this.state?.simulation) marker.bindTooltip(this.tooltip(this.markerTooltip(title)));
     marker.on('click', click);
     marker.addTo(this.markers);
     this.markerRecords.set(key, { layer: marker, coordinate, offset, signature, points });
@@ -399,7 +427,10 @@ export class LeafletMapSession {
     symbol.textContent = label;
     Object.assign(symbol.style, {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      width: '32px', height: '32px', borderRadius: '50%', background: color,
+      width: '32px', height: '32px',
+      borderRadius: this.state?.simulation && label === 'T×' ? '2px'
+        : this.state?.simulation && label === 'T!' ? '25%' : '50%',
+      background: color,
       color: '#fff', fontWeight: '700', fontSize: '13px',
       border: selected ? '3px solid #fff' : '2px solid #fff',
       boxShadow: selected ? '0 0 0 3px #35245b' : '0 1px 5px #0008',
@@ -439,7 +470,7 @@ export class LeafletMapSession {
       button.addEventListener('click', () => this.callbacks.pontoSelected(ponto));
       content.append(button);
       const origin = this.document.createElement('small');
-      origin.textContent = this.origem(ponto);
+      origin.textContent = `${this.origem(ponto)}${this.state?.simulation ? ` ${this.simulationReason(ponto)}` : ''}`;
       content.append(origin);
     }
     return content;
@@ -453,6 +484,7 @@ export class LeafletMapSession {
     for (const text of [
       `${ponto.tipo === 'tutor' ? 'Tutor' : 'Bolsista'} — ${ponto.municipio ?? 'município não identificado'}`,
       this.origem(ponto),
+      ...(this.state?.simulation ? [this.simulationReason(ponto)] : []),
       ...(ponto.semBolsista ? ['Sem bolsista vinculado'] : []),
       ...ponto.alertas,
     ]) {
@@ -466,23 +498,33 @@ export class LeafletMapSession {
   private origem(ponto: PontoMapa): string {
     const c = ponto.coordenada;
     if (!c) return 'Localização desconhecida.';
-    const origin = c.origem === 'importada' ? 'Planilha (precisão não verificada)'
-      : c.origem === 'centroide-municipal' ? 'Centroide municipal (aproximado, não endereço individual)'
-        : 'Origem desconhecida (precisão não verificada)';
+    const source = String(c.origem).toLocaleLowerCase('pt-BR');
+    const origin = source === 'importada' ? 'Planilha (precisão não verificada)'
+      : source.includes('geocod') ? 'Geocodificada (estimativa; confirme a localização e a precisão)'
+        : source === 'manual' ? 'Informada manualmente (precisão não verificada)'
+          : source === 'centroide-municipal' ? 'Centroide municipal (aproximado, não endereço individual)'
+            : 'Origem desconhecida (precisão não verificada)';
     return `${origin}. Fonte: ${c.fonte}. Coordenada original: ${c.latitude}, ${c.longitude}.`;
   }
 
   private drawCircles(tutor: PontoMapa): void {
     const c = tutor.coordenada!;
+    if (this.state?.simulation && this.state.allocation) {
+      this.leaflet.circle([c.latitude, c.longitude], {
+        color: ALLOCATION_PALETTE.active, weight: 2, fillOpacity: 0.02,
+        radius: DEFAULT_ALLOCATION_CONFIG.raioMaxKm * 1000,
+        renderer: this.renderer, interactive: false,
+      }).addTo(this.circles);
+    }
     if (this.state?.show50Km) {
       this.leaflet.circle([c.latitude, c.longitude], {
         ...MAPA_CONFIG.circles.fifty, radius: MAPA_CONFIG.radii.fifty,
         renderer: this.renderer, interactive: false,
       }).addTo(this.circles);
     }
-    if (this.state?.show100Km) {
+    if (this.state?.show130Km) {
       this.leaflet.circle([c.latitude, c.longitude], {
-        ...MAPA_CONFIG.circles.hundred, radius: MAPA_CONFIG.radii.hundred,
+        ...MAPA_CONFIG.circles.reference, radius: MAPA_CONFIG.radii.reference,
         renderer: this.renderer, interactive: false,
       }).addTo(this.circles);
     }
@@ -493,7 +535,7 @@ export class LeafletMapSession {
     const b = fellow.coordenada!;
     const metrics = this.document.createElement('div');
     for (const text of [
-      `Vínculo: ${tutor.nome} → ${fellow.nome} (não é rota rodoviária)`,
+      `${this.state?.simulation ? 'Vínculo simulado' : 'Vínculo'}: ${tutor.nome} → ${fellow.nome} (não é rota rodoviária)`,
       `Critério: ${vinculo.criterio || 'desconhecido'} — ${vinculo.regra || 'regra desconhecida'}`,
       ...metricasVinculo(vinculo),
     ]) {
@@ -519,6 +561,34 @@ export class LeafletMapSession {
     group.eachLayer((layer) => { layer.off(); layer.unbindPopup(); layer.unbindTooltip(); });
     group.clearLayers();
   }
+
+  private tooltip(text: string): HTMLElement {
+    const element = this.document.createElement('span');
+    element.textContent = text;
+    return element;
+  }
+
+  private markerTooltip(title: string): string {
+    const context = this.simulationContext();
+    return context ? `${title}. ${context}` : title;
+  }
+
+  private simulationContext(): string {
+    if (!this.state?.simulation) return '';
+    const minimum = this.state.simulationMinimum ?? DEFAULT_ALLOCATION_CONFIG.minimoPorTutor;
+    return `Mínimo selecionado: ${minimum} bolsista(s) por tutor. Raio máximo de alocação: ${DEFAULT_ALLOCATION_CONFIG.raioMaxKm} km geodésicos; não representa distância ou cobertura por estrada.`;
+  }
+
+  private simulationReason(ponto: PontoMapa): string {
+    const result = this.state?.allocation;
+    if (!result) return 'Simulação indisponível — nenhum estado de alocação calculado.';
+    if (ponto.tipo === 'tutor') {
+      const tutor = result.tutors.find((item) => item.tutorId === ponto.id);
+      return tutor ? `${TUTOR_STATUS_LABELS[tutor.status]}: ${tutor.reason}` : 'Tutor fora do resultado da simulação.';
+    }
+    const fellow = result.unassignedFellows.find((item) => item.fellowId === ponto.id);
+    return fellow ? `Sem tutor: ${fellow.reason}` : 'Bolsista alocado na simulação.';
+  }
 }
 
 function sameLayerState(a: MapaState, b: MapaState): boolean {
@@ -526,12 +596,15 @@ function sameLayerState(a: MapaState, b: MapaState): boolean {
     && a.vinculos === b.vinculos
     && a.selectedTutorId === b.selectedTutorId
     && a.show50Km === b.show50Km
-    && a.show100Km === b.show100Km
+    && a.show130Km === b.show130Km
     && a.showTutors === b.showTutors
     && a.showFellows === b.showFellows
     && a.showLinks === b.showLinks
     && a.alertsOnly === b.alertsOnly
-    && a.unallocatedOnly === b.unallocatedOnly;
+    && a.unallocatedOnly === b.unallocatedOnly
+    && a.simulation === b.simulation
+    && a.simulationMinimum === b.simulationMinimum
+    && a.allocation === b.allocation;
 }
 
 function samePoints(a: readonly PontoMapa[], b: readonly PontoMapa[]): boolean {

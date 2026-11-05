@@ -4,7 +4,7 @@
 Gestores precisam cruzar localizações de médicos tutores e bolsistas para identificar convergências e planejar deslocamentos efetivos. O sistema apoia a decisão, não substitui critérios institucionais.
 
 ## MVP
-Importar Excel; validar/m mapear colunas; confirmar localização; mostrar pontos no mapa; círculos geodésicos de 50/100 km; calcular distância rodoviária; classificar até 50, 50–100, acima de 100 e indisponível; filtrar; mostrar múltiplos tutores candidatos; exportar cruzamentos.
+Importar Excel; validar/m mapear colunas; confirmar localização; mostrar pontos no mapa; círculos geodésicos de 50/130 km; calcular distância rodoviária; classificar até 50, 50–100, acima de 100 e indisponível; filtrar; mostrar múltiplos tutores candidatos; exportar cruzamentos.
 
 ## Evolução
 Simulação de alocação, restrições de capacidade/agenda/território quando definidas, comparação de cenários, persistência e backend Java/Quarkus se necessário.

@@ -1,0 +1,18 @@
+:host {
+  display: block;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #d6e0e5;
+  border-radius: .75rem;
+  background: #fff;
+}
+.chart-title { margin: 0 0 .75rem; font-size: 1rem; color: #172b4d; }
+.chart-container[hidden] { display: none; }
+.chart-error { padding: .75rem; border-left: 3px solid #a32a25; background: #fff6f5; }
+.chart-error p { margin: 0 0 .75rem; }
+.chart-container { position: relative; height: clamp(18rem, 42vw, 26rem); max-height: 26rem; }
+canvas { max-width: 100%; max-height: 26rem; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; padding: 0; list-style: none; }
+.series-swatch { display: inline-block; width: 1.2rem; height: .75rem; border: 2px solid #172b4d; vertical-align: middle; }
+.series-swatch.dashed { border-style: dashed; }
+.chart-note { margin-bottom: 0; font-size: .9rem; }

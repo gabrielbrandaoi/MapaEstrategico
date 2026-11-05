@@ -18,7 +18,7 @@ export const MAPA_CONFIG = {
   selectedMaxZoom: 11,
   visualJitterPixels: 14,
   coincidentMarkerSeparationPixels: 44,
-  radii: { fifty: 50_000, hundred: 100_000 },
+  radii: { fifty: 50_000, reference: 130_000 },
   base: {
     color: '#526b73', weight: 1, fillColor: '#e5eee9', fillOpacity: 0.7,
   } satisfies PathOptions,
@@ -32,7 +32,7 @@ export const MAPA_CONFIG = {
   } satisfies Record<string, PathOptions>,
   circles: {
     fifty: { color: '#b36916', weight: 1.5, fillOpacity: 0.06 },
-    hundred: { color: '#745129', weight: 1.5, fillOpacity: 0.03, dashArray: '6 5' },
+    reference: { color: '#745129', weight: 1.5, fillOpacity: 0.03, dashArray: '6 5' },
   } satisfies Record<string, PathOptions>,
 } as const;
 
@@ -46,14 +46,14 @@ export function regraVisual(vinculo: VinculoMapa): RegraVisual {
 }
 
 export const MAPA_LEGENDA = [
-  { simbolo: 'T', texto: 'Tutor', cor: MAPA_CONFIG.tutor.normal },
-  { simbolo: 'T!', texto: 'Tutor com alerta', cor: MAPA_CONFIG.tutor.alert },
-  { simbolo: 'T∅', texto: 'Tutor sem bolsista', cor: MAPA_CONFIG.tutor.empty },
+  { simbolo: 'T', texto: 'Tutor da base importada, sem alerta identificado (não é resultado de simulação)', cor: MAPA_CONFIG.tutor.normal },
+  { simbolo: 'T!', texto: 'Tutor com alerta nos dados importados; selecione para consultar o motivo', cor: MAPA_CONFIG.tutor.alert },
+  { simbolo: 'T∅', texto: 'Tutor sem bolsistas nos vínculos importados; não equivale a dispensa na simulação', cor: MAPA_CONFIG.tutor.empty },
   { simbolo: '●', texto: 'Bolsistas agrupados por município (número = quantidade)', cor: MAPA_CONFIG.fellow.normal },
   { simbolo: '◆ n', texto: 'Bolsistas vinculados ao tutor selecionado, agrupados por município', cor: MAPA_CONFIG.fellow.selected },
-  { simbolo: '○', texto: 'Bolsista sem vínculo', cor: MAPA_CONFIG.fellow.unallocated },
-  { simbolo: '━ ━', texto: 'Segunda rodada', cor: MAPA_CONFIG.rules.segunda.color },
-  { simbolo: '┄┄', texto: 'Regra de 50 km', cor: MAPA_CONFIG.rules.cinquenta.color },
-  { simbolo: '···', texto: 'Mesmo município', cor: MAPA_CONFIG.rules.municipio.color },
-  { simbolo: '╌╌', texto: 'Regra desconhecida', cor: MAPA_CONFIG.rules.desconhecida.color },
+  { simbolo: '○', texto: 'Bolsista sem vínculo informado na planilha (não é diagnóstico de distância ou falta de vagas)', cor: MAPA_CONFIG.fellow.unallocated },
+  { simbolo: '━ ━', texto: 'Vínculo identificado na planilha como segunda rodada; não confirma rota rodoviária', cor: MAPA_CONFIG.rules.segunda.color },
+  { simbolo: '┄┄', texto: 'Vínculo cuja regra importada faz referência a 50 km; não confirma distância por estrada', cor: MAPA_CONFIG.rules.cinquenta.color },
+  { simbolo: '···', texto: 'Vínculo identificado como mesmo município; não implica endereços coincidentes', cor: MAPA_CONFIG.rules.municipio.color },
+  { simbolo: '╌╌', texto: 'Vínculo importado com regra não reconhecida; consulte os avisos da importação', cor: MAPA_CONFIG.rules.desconhecida.color },
 ] as const;

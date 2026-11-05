@@ -20,6 +20,15 @@
       </button>
       <button
         type="button"
+        [class.is-active]="activeTab() === 'simulations'"
+        [attr.aria-current]="activeTab() === 'simulations' ? 'page' : null"
+        (click)="selectTab('simulations')"
+      >
+        <span class="nav-icon" aria-hidden="true">⇄</span>
+        Simulações
+      </button>
+      <button
+        type="button"
         [class.is-active]="activeTab() === 'relationships'"
         [attr.aria-current]="activeTab() === 'relationships' ? 'page' : null"
         (click)="selectTab('relationships')"
@@ -48,7 +57,7 @@
       <div class="breadcrumbs">
         <span>Planejamento</span>
         <span aria-hidden="true">/</span>
-        <strong>{{ activeTab() === 'overview' ? 'Visão geral' : 'Relações e rotas' }}</strong>
+        <strong>{{ activeTab() === 'overview' ? 'Visão geral' : activeTab() === 'simulations' ? 'Simulações' : 'Relações e rotas' }}</strong>
       </div>
       <div class="topbar-actions">
         <span class="session-label"><span aria-hidden="true">●</span> Sessão local</span>
@@ -621,15 +630,56 @@
               >
               <span>
                 <strong>{{ statistics().fellowsWithMultipleNearbyTutorsCount }}</strong>
-                <small>Bolsistas com 2+ pares próximos em linha reta (≤100 km)</small>
+                <small>Bolsistas com 2+ pares próximos em linha reta (≤{{ allocationConfig.raioMaxKm }} km)</small>
               </span>
             </div>
           </section>
         }
       }
 
+      @if (activeTab() === 'simulations') {
+        <section class="page-heading">
+          <div>
+            <span class="eyebrow">Cenários de alocação</span>
+            <h1 id="simulations-title" tabindex="-1">Simulações</h1>
+            <p>Compare as regras de alocação sem alterar os dados exibidos na Visão geral.</p>
+          </div>
+        </section>
+        <app-simulations
+          [scenarios]="simulationScenarios()"
+          [participants]="participants()"
+          [loading]="geoStatus() === 'loading'"
+        />
+      }
+
       <!-- O mapa permanece no DOM em todas as abas para preservar a instância Leaflet. -->
       <div class="map-workspace" [hidden]="activeTab() !== 'overview'">
+          <section class="panel map-scenario-panel" aria-labelledby="map-scenario-title">
+            <div class="panel-heading">
+              <div>
+                <h2 id="map-scenario-title">Dados exibidos no mapa</h2>
+                <p>O cenário só substitui a visualização; os vínculos importados são preservados.</p>
+              </div>
+              <label class="field field--compact" for="map-scenario">
+                <span>Cenário do mapa</span>
+                <select id="map-scenario" [value]="mapScenario()" (change)="onMapScenarioChanged($event)">
+                  <option value="imported">Vínculos importados</option>
+                  <option value="1">Simulação — mínimo 1 bolsista</option>
+                  <option value="2">Simulação — mínimo 2 bolsistas</option>
+                </select>
+              </label>
+            </div>
+            @if (allocationMode() === 'simulation') {
+              <p class="field-hint" role="status">
+                Cenário simulado: mínimo {{ simulationMinimum() }}, raio {{ allocationConfig.raioMaxKm }} km geodésicos
+                e máximo {{ allocationConfig.maximoPorTutor }} bolsistas por tutor.
+                Os indicadores no topo continuam referentes à base importada.
+              </p>
+              @if (selectedSimulation()?.error; as error) {
+                <p class="alert alert--error" role="alert">{{ error }}</p>
+              }
+            }
+          </section>
           <section class="workspace-grid">
             <article class="panel map-panel" aria-labelledby="map-title">
               <div class="panel-heading map-panel__heading">
@@ -672,7 +722,7 @@
                       [checked]="alertsOnly()"
                       (change)="onAlertsOnlyChanged($event)"
                     />
-                    Só tutores com alerta
+                    {{ allocationMode() === 'simulation' ? 'Só participantes com pendência na simulação' : 'Só tutores com alerta' }}
                   </label>
                   <label class="check-control">
                     <input
@@ -680,7 +730,7 @@
                       [checked]="unallocatedOnly()"
                       (change)="onUnallocatedOnlyChanged($event)"
                     />
-                    Só tutores sem bolsista
+                    {{ allocationMode() === 'simulation' ? 'Só participantes sem vínculo simulado' : 'Só tutores sem bolsista' }}
                   </label>
                   <label class="check-control">
                     <input
@@ -689,16 +739,16 @@
                       (change)="on50KmChanged($event)"
                     />
                     <span class="check-swatch check-swatch--50" aria-hidden="true"></span>
-                    50 km
+                    50 km (referência)
                   </label>
                   <label class="check-control">
                     <input
                       type="checkbox"
-                      [checked]="show100Km()"
-                      (change)="on100KmChanged($event)"
+                      [checked]="show130Km()"
+                      (change)="on130KmChanged($event)"
                     />
-                    <span class="check-swatch check-swatch--100" aria-hidden="true"></span>
-                    100 km
+                    <span class="check-swatch check-swatch--130" aria-hidden="true"></span>
+                    130 km (referência)
                   </label>
                 </div>
               </div>
@@ -747,11 +797,14 @@
                 </section>
               }
               <app-leaflet-map
+                [simulation]="allocationMode() === 'simulation'"
+                [allocation]="allocationResult()"
+                [simulationMinimum]="simulationMinimum()"
                 [pontos]="visibleMapPontos()"
                 [vinculos]="visibleMapVinculos()"
                 [selectedTutorId]="selectedTutorId()"
                 [show50Km]="show50Km()"
-                [show100Km]="show100Km()"
+                [show130Km]="show130Km()"
                 [tilesEnabled]="tilesEnabled()"
                 [showTutors]="tutorFilter()"
                 [showFellows]="fellowFilter()"
@@ -824,8 +877,19 @@
                 </dl>
                 @if (selected.type === 'tutor') {
                   <p class="detail-tip">
-                    Os raios de 50 e 100 km no mapa são centralizados neste tutor.
+                    Os raios de 50 e 130 km no mapa são centralizados neste tutor.
                   </p>
+                }
+                @if (selectedSimulationTutor(); as tutor) {
+                  @if (selected.type === 'tutor' && selected.id === tutor.tutorId) {
+                    <p><strong>Simulação mínimo {{ simulationMinimum() }}:
+                      {{ tutorStatusLabels[tutor.status] }}</strong> — {{ tutor.reason }}
+                      · {{ tutor.fellowCount }} bolsista(s).
+                    </p>
+                  }
+                }
+                @if (selectedSimulationFellow(); as fellow) {
+                  <p><strong>Sem tutor na simulação</strong> — {{ fellow.reason }}</p>
                 }
               } @else {
                 <div class="detail-empty">
@@ -835,7 +899,22 @@
               }
             </aside>
           </section>
-          @if (selectedTutorSummary(); as resumo) {
+          @if (allocationMode() === 'simulation') {
+            @if (selectedSimulationTutor(); as tutor) {
+              <section class="panel tutor-summary-panel" aria-label="Resumo do tutor na simulação">
+                <h2>{{ selectedTutorPonto()?.nome }} — simulação mínimo {{ simulationMinimum() }}</h2>
+                <p>{{ tutorStatusLabels[tutor.status] }} — {{ tutor.reason }} · {{ tutor.fellowCount }} bolsista(s)</p>
+                <ul>
+                  @for (line of selectedTutorLinhas(); track line.vinculo.id) {
+                    <li>{{ line.bolsista?.nome }} — {{ line.vinculo.distanciaGeodesicaKm | number:'1.1-1' }} km geodésicos</li>
+                  } @empty {
+                    <li>Nenhum vínculo simulado para este tutor.</li>
+                  }
+                </ul>
+                <button type="button" (click)="deselectTutor()">Limpar seleção do tutor</button>
+              </section>
+            }
+          } @else if (selectedTutorSummary(); as resumo) {
             <section class="panel tutor-summary-panel">
               <app-tutor-summary
                 [resumo]="resumo"
@@ -999,7 +1078,7 @@
             }
           </section>
         }
-      } @else {
+      } @else if (activeTab() === 'relationships') {
         <section class="page-heading">
           <div>
             <span class="eyebrow">Análise de proximidade</span>
@@ -1176,7 +1255,7 @@
           <div>
             <strong>Os pares listados são relações de proximidade, não atribuições.</strong>
             <p>
-              A pré-seleção usa distância geodésica de até 100 km; isso não confirma elegibilidade
+              A pré-seleção usa distância geodésica de até {{ allocationConfig.raioMaxKm }} km; isso não confirma elegibilidade
               rodoviária. Não há capacidade, agenda ou regra de alocação definida. O OSRM público
               não tem SLA garantido.
             </p>
@@ -1203,7 +1282,7 @@
                 <span class="eyebrow">Pré-seleção geográfica exploratória</span>
                 <h2>Pares tutor–bolsista próximos</h2>
                 <p>
-                  {{ visibleProximityPairs().length }} pares dentro do raio geodésico de 100 km,
+                  {{ visibleProximityPairs().length }} pares dentro do raio geodésico de {{ allocationConfig.raioMaxKm }} km,
                   conforme filtros. Distância rodoviária só é exibida após cálculo.
                 </p>
               </div>
@@ -1254,7 +1333,7 @@
                 <span aria-hidden="true">⌕</span>
                 <strong>Nenhum par corresponde à análise atual</strong>
                 <p>
-                  Pode não haver pares a até 100 km em linha reta, ou os filtros podem ocultar os
+                  Pode não haver pares a até {{ allocationConfig.raioMaxKm }} km em linha reta, ou os filtros podem ocultar os
                   resultados. Isso não substitui uma análise de rota rodoviária.
                 </p>
               </div>

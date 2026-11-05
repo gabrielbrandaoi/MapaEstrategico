@@ -9,6 +9,9 @@ import {
 } from './leaflet-map.helpers';
 import { BRASIL_BOUNDS, MAPA_CONFIG, regraVisual } from './mapa.config';
 import { LeafletMapSession, type MapaState } from './leaflet-layers.service';
+import { simulateAllocation } from '../domain/allocation';
+import { DEFAULT_ALLOCATION_CONFIG } from '../domain/allocation.models';
+import { ALLOCATION_PALETTE } from './allocation-palette';
 
 const coord = (latitude = -23, longitude = -46): Coordenada =>
   ({ latitude, longitude, origem: 'importada', fonte: 'fixture sintética' });
@@ -91,7 +94,7 @@ describe('helpers do adaptador Leaflet', () => {
     expect(regraVisual(vinculo({ regra50Km: true }))).toBe('cinquenta');
     expect(regraVisual(vinculo())).toBe('municipio');
     expect(regraVisual(vinculo({ mesmoMunicipio: false }))).toBe('desconhecida');
-    expect(MAPA_CONFIG.radii).toEqual({ fifty: 50_000, hundred: 100_000 });
+    expect(MAPA_CONFIG.radii).toEqual({ fifty: 50_000, reference: 130_000 });
   });
   it('preserva as três métricas, zero e falha do provedor sem inventar distância rodoviária', () => {
     const values = metricasVinculo(vinculo({
@@ -181,7 +184,7 @@ function fakeLeaflet() {
 function state(patch: Partial<MapaState> = {}): MapaState {
   return {
     pontos: [], vinculos: [], selectedTutorId: null,
-    show50Km: false, show100Km: false, tilesEnabled: false,
+    show50Km: false, show130Km: false, tilesEnabled: false,
     showTutors: true, showFellows: true, showLinks: true,
     alertsOnly: false, unallocatedOnly: false, resetKey: 0, ...patch,
   };
@@ -248,12 +251,46 @@ describe('sessão Leaflet: lifecycle e camadas', () => {
       ponto('c', { coordenada: coord(-22, -45) })];
     session.render(state());
     session.render(state({ pontos, vinculos: [vinculo(), vinculo({ id: 'outro', tutorId: 'outro', bolsistaId: 'c' })],
-      selectedTutorId: 't', show50Km: true, show100Km: true }));
+      selectedTutorId: 't', show50Km: true, show130Km: true }));
     expect(api.polyline).toHaveBeenCalledTimes(1);
     expect(api.polyline).toHaveBeenCalledWith([[-23, -46], [-3, -60]], expect.objectContaining({ dashArray: '2 5' }));
     expect(api.circle).toHaveBeenCalledWith([-23, -46], expect.objectContaining({ radius: 50_000 }));
-    expect(api.circle).toHaveBeenCalledWith([-23, -46], expect.objectContaining({ radius: 100_000 }));
+    expect(api.circle).toHaveBeenCalledWith([-23, -46], expect.objectContaining({ radius: 130_000 }));
     expect(api.latLngBounds).toHaveBeenCalledWith([[-23, -46], [-3, -60]]);
+    session.destroy();
+  });
+  it('explica no tooltip o mínimo selecionado e o raio obtido da configuração', () => {
+    const { api, session } = setup();
+    const tutor = ponto('t', { tipo: 'tutor' });
+    const allocation = simulateAllocation([], [], {
+      ...DEFAULT_ALLOCATION_CONFIG, minimoPorTutor: 2,
+    });
+    session.render(state({
+      pontos: [tutor], selectedTutorId: 't', simulation: true, simulationMinimum: 2, allocation,
+    }));
+
+    const marker = api.marker.mock.results[0].value;
+    const tooltip = marker.bindTooltip.mock.calls[0][0] as HTMLElement;
+    expect(tooltip.textContent).toContain('Tutor fora do resultado da simulação');
+    expect(tooltip.textContent).toContain('Mínimo selecionado: 2 bolsista(s) por tutor');
+    expect(tooltip.textContent).toContain(`Raio máximo de alocação: ${DEFAULT_ALLOCATION_CONFIG.raioMaxKm} km geodésicos`);
+    expect(tooltip.textContent).toContain('não representa distância ou cobertura por estrada');
+    expect(api.circle).toHaveBeenCalledWith([-23, -46], expect.objectContaining({
+      radius: DEFAULT_ALLOCATION_CONFIG.raioMaxKm * 1000,
+    }));
+    const icon = (api.divIcon.mock.calls[0][0] as L.DivIconOptions).html as HTMLElement;
+    const expectedColor = document.createElement('span');
+    expectedColor.style.background = ALLOCATION_PALETTE.unassigned;
+    expect(icon.style.background).toBe(expectedColor.style.background);
+
+    const minOneAllocation = simulateAllocation([], []);
+    session.render(state({
+      pontos: [tutor], selectedTutorId: 't', simulation: true, simulationMinimum: 1,
+      allocation: minOneAllocation,
+    }));
+    expect(marker.bindTooltip).toHaveBeenCalledTimes(2);
+    expect((marker.bindTooltip.mock.calls[1][0] as HTMLElement).textContent)
+      .toContain('Mínimo selecionado: 1 bolsista(s) por tutor');
     session.destroy();
   });
   it('não impõe minzoom fixo que corte o Brasil em telas pequenas', () => {

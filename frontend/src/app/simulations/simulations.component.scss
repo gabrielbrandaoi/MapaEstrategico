@@ -1,0 +1,15 @@
+:host { display: block; min-width: 0; }
+.simulations { display: grid; gap: 1rem; }
+.view-selection { display: flex; flex-wrap: wrap; gap: 1rem; border: 1px solid #c9d4df; border-radius: .5rem; padding: .8rem 1rem; }
+.view-selection label { display: inline-flex; gap: .4rem; align-items: center; cursor: pointer; min-height: 2rem; }
+.table-scroll { overflow-x: auto; max-width: 100%; border: 1px solid #c9d4df; border-radius: .5rem; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+caption { text-align: left; padding: .8rem; font-weight: 600; }
+th, td { padding: .65rem .8rem; border-bottom: 1px solid #dfe5ec; text-align: right; white-space: nowrap; }
+th:first-child { text-align: left; white-space: normal; min-width: 12rem; }
+thead, .total { background: #edf2f7; }
+.total { font-weight: 700; }
+.subtotal th { font-style: italic; }
+.status-swatch { display: inline-block; width: .75rem; height: .75rem; border: 1px solid #344054; margin-right: .4rem; }
+.export-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+:is(input, button, .table-scroll):focus-visible { outline: 3px solid #155eef; outline-offset: 3px; }

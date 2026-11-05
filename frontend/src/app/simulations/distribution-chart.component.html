@@ -1,0 +1,35 @@
+<h2 class="chart-title">Distribuição de tutores</h2>
+@if (loading()) {
+  <p role="status">Preparando gráfico…</p>
+}
+@if (error(); as message) {
+  <div class="chart-error">
+    <p role="alert">{{ message }}</p>
+    <button class="button button--quiet" type="button" (click)="retry()">Tentar novamente</button>
+  </div>
+}
+<div class="chart-container" [hidden]="!!error()" [attr.aria-busy]="loading()">
+  <canvas #canvas role="img" [attr.aria-label]="description()">
+    Distribuição de tutores. Os mesmos valores estão disponíveis na tabela de distribuição.
+  </canvas>
+</div>
+@if (ready()) {
+<ul class="chart-legend" aria-label="Legenda do gráfico (também desenhada no canvas e no PNG)">
+  @if (rows()[0]?.values?.length === 2) {
+    @for (value of rows()[0]?.values ?? []; track value.minimum) {
+      <li>
+        <span class="series-swatch" [class.dashed]="value.minimum === 2"
+          [style.background-color]="value.minimum === 1 ? palette.minimum1 : palette.minimum2"></span>
+        Mínimo {{ value.minimum }} — contorno {{ value.minimum === 1 ? 'contínuo' : 'tracejado' }}
+      </li>
+    }
+  } @else {
+    <li><span class="series-swatch" [style.background-color]="palette.active"></span> Tutores ativos (1 a 4)</li>
+    <li><span class="series-swatch" [style.background-color]="palette.unassigned"></span> 0 (subtotal)</li>
+    <li>Mínimo {{ rows()[0]?.values?.[0]?.minimum }} —
+      contorno {{ rows()[0]?.values?.[0]?.minimum === 2 ? 'tracejado' : 'contínuo' }}</li>
+  }
+</ul>
+<p class="chart-note">0 é o subtotal dos tutores dispensados e abaixo do mínimo, detalhados na tabela.
+  Não some 0 novamente aos estados. As faixas 1 a 4 e os dois estados somam o total.</p>
+}

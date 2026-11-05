@@ -1,0 +1,154 @@
+<section class="simulations" aria-label="Resultados das simulações" [attr.aria-busy]="loading()">
+  <fieldset class="view-selection">
+    <legend>Visualização dos cenários</legend>
+    <label><input type="radio" name="simulation-view" value="1"
+      [checked]="view() === '1'" (change)="view.set('1')"> Mínimo 1</label>
+    <label><input type="radio" name="simulation-view" value="2"
+      [checked]="view() === '2'" (change)="view.set('2')"> Mínimo 2</label>
+    <label><input type="radio" name="simulation-view" value="comparison"
+      [checked]="view() === 'comparison'" (change)="view.set('comparison')"> Comparação</label>
+  </fieldset>
+
+  @let data = content();
+  @if (data.state === 'loading') {
+    <p role="status">Atualizando cenários de simulação…</p>
+  } @else if (data.state === 'empty') {
+    <p role="status">Importe participantes para visualizar as simulações.</p>
+  } @else if (data.state === 'error') {
+    <p role="alert">{{ data.message }}</p>
+  } @else if (data.state === 'success') {
+    <p>Simulação geodésica — todos os participantes, independente dos filtros do mapa.
+      Distâncias em linha reta; não representam trajetos rodoviários.</p>
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Indicadores dos cenários">
+      <table>
+        <caption>Indicadores da simulação</caption>
+        <thead><tr><th scope="col">Indicador</th>
+          @for (scenario of data.scenarios; track scenario.minimum) {
+            <th scope="col">Mínimo {{ scenario.minimum }}</th>
+          }
+        </tr></thead>
+        <tbody>
+          <tr><th scope="row">Bolsistas alocados</th>
+            @for (result of data.results; track $index) { <td>{{ result.indicators.allocatedFellows }}</td> }
+          </tr>
+          <tr><th scope="row">Bolsistas sem tutor</th>
+            @for (result of data.results; track $index) { <td>{{ result.indicators.unassignedFellows }}</td> }
+          </tr>
+          <tr><th scope="row">Tutores ativos</th>
+            @for (result of data.results; track $index) { <td>{{ result.indicators.activeTutors }}</td> }
+          </tr>
+          <tr><th scope="row">Tutores dispensados</th>
+            @for (result of data.results; track $index) { <td>{{ result.indicators.dismissedTutors }}</td> }
+          </tr>
+          <tr><th scope="row">Tutores abaixo do mínimo</th>
+            @for (result of data.results; track $index) { <td>{{ result.indicators.belowMinimumTutors }}</td> }
+          </tr>
+          <tr><th scope="row">Menor distância geodésica (km)</th>
+            @for (scenario of data.scenarios; track scenario.minimum) {
+              <td>{{ scenario.minimumKm === null ? '—' : (scenario.minimumKm | number:'1.1-1') }}</td>
+            }
+          </tr>
+          <tr><th scope="row">Média geodésica (km)</th>
+            @for (result of data.results; track $index) {
+              <td>{{ result.indicators.averageStraightLineKm === null ? '—' : (result.indicators.averageStraightLineKm | number:'1.1-1') }}</td>
+            }
+          </tr>
+          <tr><th scope="row">Maior distância geodésica (km)</th>
+            @for (result of data.results; track $index) {
+              <td>{{ result.indicators.maximumStraightLineKm === null ? '—' : (result.indicators.maximumStraightLineKm | number:'1.1-1') }}</td>
+            }
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Tabela de distribuição de tutores">
+      <table class="distribution-table">
+        <caption>Distribuição de tutores por quantidade de bolsistas — percentuais sobre o total de tutores</caption>
+        <thead><tr>
+          <th scope="col">Quantidade de bolsistas / estado</th>
+          @for (scenario of data.scenarios; track scenario.minimum) {
+            <th scope="col">Mínimo {{ scenario.minimum }} — tutores</th>
+            <th scope="col">Mínimo {{ scenario.minimum }} — %</th>
+          }
+          @if (view() === 'comparison') {
+            <th scope="col">Δ tutores (2 − 1)</th>
+            <th scope="col">Δ percentual (p.p., 2 − 1)</th>
+          }
+        </tr></thead>
+        <tbody>
+          @for (row of data.rows; track row.key) {
+            <tr [class.subtotal]="row.subtotal" [class.total]="row.key === 'total'">
+              <th scope="row">
+                @if (row.key !== 'total') { <span class="status-swatch" [style.background-color]="rowColor(row.key)"></span> }
+                {{ row.label }}
+              </th>
+              @for (value of row.values; track value.minimum) {
+                <td>{{ value.count }}</td><td>{{ value.percentage | number:'1.1-2' }}%</td>
+              }
+              @if (view() === 'comparison') {
+                <td>{{ row.countDifference !== null && row.countDifference > 0 ? '+' : '' }}{{ row.countDifference }}</td>
+                <td>{{ row.percentagePointDifference !== null && row.percentagePointDifference > 0 ? '+' : '' }}{{ row.percentagePointDifference | number:'1.1-2' }} p.p.</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <p>0 é subtotal: dispensados + abaixo do mínimo. Não é contado duas vezes no total.
+      As linhas 1 a 4 + dispensados + abaixo do mínimo somam o total.</p>
+
+    <app-distribution-chart [rows]="data.rows" />
+
+    <div class="export-actions" role="group" aria-label="Exportar distribuição exibida">
+      <button class="button button--quiet" type="button" (click)="exportDistribution('csv')" [disabled]="exporting()">
+        Exportar distribuição CSV
+      </button>
+      <button class="button button--quiet" type="button" (click)="exportDistribution('xlsx')" [disabled]="exporting()">
+        Exportar distribuição Excel
+      </button>
+      <button class="button button--quiet" type="button" (click)="exportDistribution('png')"
+        [disabled]="exporting() || !chart()?.ready()">
+        Exportar gráfico PNG
+      </button>
+    </div>
+    @for (result of data.results; track result.config.minimoPorTutor) {
+      <details>
+        <summary>Estados, razões e vínculos — mínimo {{ result.config.minimoPorTutor }}</summary>
+        <p>Inclui participantes sem coordenadas. Estes resultados não alteram os vínculos importados.</p>
+        <div class="export-actions" role="group"
+          [attr.aria-label]="'Exportar vínculos da simulação mínimo ' + result.config.minimoPorTutor">
+          <button class="button button--quiet" type="button"
+            (click)="exportRelationships(result.config.minimoPorTutor, 'csv')" [disabled]="exporting()">
+            Exportar vínculos mínimo {{ result.config.minimoPorTutor }} CSV
+          </button>
+          <button class="button button--quiet" type="button"
+            (click)="exportRelationships(result.config.minimoPorTutor, 'xlsx')" [disabled]="exporting()">
+            Exportar vínculos mínimo {{ result.config.minimoPorTutor }} Excel
+          </button>
+        </div>
+        <h2>Tutores</h2>
+        @if (result.tutors.length === 0) { <p>Nenhum tutor neste cenário.</p> }
+        <ul>
+          @for (tutor of result.tutors; track tutor.tutorId) {
+            <li>{{ participantNames().get(tutor.tutorId) ?? 'Tutor sem nome disponível' }}:
+              {{ tutorStatusLabels[tutor.status] }} — {{ tutor.fellowCount }} bolsista(s).
+              {{ tutor.reason }}
+            </li>
+          }
+        </ul>
+        <h2>Bolsistas sem tutor</h2>
+        @if (result.unassignedFellows.length === 0) { <p>Nenhum bolsista sem tutor.</p> }
+        <ul>
+          @for (fellow of result.unassignedFellows; track fellow.fellowId) {
+            <li>{{ participantNames().get(fellow.fellowId) ?? 'Bolsista sem nome disponível' }}:
+              {{ fellow.reason }}</li>
+          }
+        </ul>
+      </details>
+    }
+  }
+  @if (exporting()) { <p role="status">Exportando distribuição…</p> }
+  @if (exportStatus(); as status) { <p role="status">{{ status }}</p> }
+  @if (exportError(); as message) { <p role="alert">{{ message }}</p> }
+</section>

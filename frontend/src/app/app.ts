@@ -40,6 +40,11 @@ import {
 } from './importing/importador-planilha.service';
 import { ReportExportService } from './reports/report-export.service';
 import { ROUTING_PROVIDER } from './routing/routing-provider';
+import { DEFAULT_ALLOCATION_CONFIG } from './domain/allocation.models';
+import {
+  simulationScenarios, simulationPoints, simulationLinks, TUTOR_STATUS_LABELS,
+} from './map/allocation-presentation';
+import { SimulationsComponent } from './simulations/simulations.component';
 
 type MappingControls = {
   [Key in keyof ColumnMapping]: FormControl<string>;
@@ -49,7 +54,7 @@ type RoadFilter = 'all' | 'not-calculated' | 'success' | 'unavailable' | 'error'
 type PairSort = 'straight-line' | 'road-distance';
 type ParticipantSort = 'name' | 'city' | 'type' | 'source-row';
 type GeoStatus = 'idle' | 'loading' | 'ready' | 'error';
-type AppTab = 'overview' | 'relationships';
+type AppTab = 'overview' | 'simulations' | 'relationships';
 type PagedTable = 'participants' | 'pairs' | 'importedRelationships';
 
 /** Linhas renderizadas por página nas tabelas extensas; exportações usam o conjunto completo. */
@@ -73,6 +78,7 @@ const FIRST_PAGES: Readonly<Record<PagedTable, number>> = {
 
 const TAB_HEADING_IDS: Record<AppTab, string> = {
   overview: 'overview-title',
+  simulations: 'simulations-title',
   relationships: 'relationships-title',
 };
 
@@ -95,7 +101,7 @@ const EMPTY_MAPPING: ColumnMapping = {
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, LeafletMapComponent, TutorSummaryComponent],
+  imports: [CommonModule, ReactiveFormsModule, LeafletMapComponent, TutorSummaryComponent, SimulationsComponent],
   templateUrl: './app.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -116,6 +122,30 @@ export class App {
   private fileReadGeneration = 0;
 
   protected readonly participants = signal<Participant[]>([]);
+  protected readonly allocationConfig = DEFAULT_ALLOCATION_CONFIG;
+  protected readonly tutorStatusLabels = TUTOR_STATUS_LABELS;
+  protected readonly mapScenario = signal<'imported' | '1' | '2'>('1');
+  protected readonly allocationMode = computed(() =>
+    this.mapScenario() === 'imported' ? 'imported' : 'simulation',
+  );
+  protected readonly simulationMinimum = computed<1 | 2>(() =>
+    this.mapScenario() === '2' ? 2 : 1,
+  );
+  protected readonly simulationScenarios = computed(() => simulationScenarios(this.participants()));
+  protected readonly selectedSimulation = computed(() =>
+    this.simulationScenarios().find((scenario) => scenario.minimum === this.simulationMinimum()) ?? null,
+  );
+  protected readonly allocationResult = computed(() =>
+    this.allocationMode() === 'simulation' ? this.selectedSimulation()?.result ?? null : null,
+  );
+  protected readonly selectedSimulationTutor = computed(() =>
+    this.allocationResult()?.tutors.find((tutor) => tutor.tutorId === this.selectedTutorId()) ?? null,
+  );
+  protected readonly selectedSimulationFellow = computed(() =>
+    this.allocationResult()?.unassignedFellows.find(
+      (fellow) => fellow.fellowId === this.selectedParticipant()?.id,
+    ) ?? null,
+  );
   protected readonly parsedWorkbook = signal<ParsedWorkbook | null>(null);
   protected readonly selectedSheetName = signal('');
   protected readonly headerRowIndex = signal(-1);
@@ -135,7 +165,7 @@ export class App {
   protected readonly tutorFilter = signal(true);
   protected readonly fellowFilter = signal(true);
   protected readonly show50Km = signal(true);
-  protected readonly show100Km = signal(true);
+  protected readonly show130Km = signal(true);
   protected readonly tilesEnabled = signal(false);
   protected readonly showLinks = signal(true);
   protected readonly alertsOnly = signal(false);
@@ -276,8 +306,14 @@ export class App {
     });
   });
 
-  protected readonly mapPontos = computed<readonly PontoMapa[]>(() =>
+  private readonly importedMapPontos = computed<readonly PontoMapa[]>(() =>
     this.cenariosPorLote().flatMap(({ cenario }) => cenario.pontos),
+  );
+
+  protected readonly mapPontos = computed<readonly PontoMapa[]>(() =>
+    this.allocationMode() === 'simulation'
+      ? simulationPoints(this.participants(), this.importedMapPontos(), this.allocationResult())
+      : this.importedMapPontos(),
   );
 
   private readonly pontosPorId = computed(
@@ -286,6 +322,7 @@ export class App {
 
   /** Vínculos de todos os lotes, com rotas sob demanda aplicadas e métricas do domínio. */
   protected readonly mapVinculos = computed(() => {
+    if (this.allocationMode() === 'simulation') return simulationLinks(this.allocationResult());
     const rotas = this.routesByVinculo();
     const vinculos = this.cenariosPorLote().flatMap(({ cenario }) =>
       cenario.vinculos.map((vinculo) => {
@@ -381,7 +418,9 @@ export class App {
    * Geometria dos pares (haversine + ordenação) depende só do cadastro; atualizar uma rota
    * não deve refazer este cálculo.
    */
-  private readonly proximityGeometry = computed(() => buildProximityPairs(this.participants()));
+  private readonly proximityGeometry = computed(() =>
+    buildProximityPairs(this.participants(), DEFAULT_ALLOCATION_CONFIG.raioMaxKm),
+  );
 
   /**
    * Pares com rota aplicada. A geometria já traz `route: null`; sem rota, a referência do par é
@@ -654,6 +693,7 @@ export class App {
 
   protected clearData(): void {
     this.resetAnalysisState();
+    this.mapScenario.set('1');
     this.mapResetKey.update((key) => key + 1);
     this.tilesEnabled.set(false);
     this.searchText.set('');
@@ -725,8 +765,19 @@ export class App {
     this.show50Km.set(inputChecked(event));
   }
 
-  protected on100KmChanged(event: Event): void {
-    this.show100Km.set(inputChecked(event));
+  protected on130KmChanged(event: Event): void {
+    this.show130Km.set(inputChecked(event));
+  }
+
+  protected onMapScenarioChanged(event: Event): void {
+    const value = inputValue(event);
+    if (value !== 'imported' && value !== '1' && value !== '2') {
+      this.operationError.set('Selecione um cenário válido para o mapa.');
+      return;
+    }
+    this.operationError.set(null);
+    this.mapScenario.set(value);
+    this.deselectTutor();
   }
 
   protected onRoadFilterChanged(event: Event): void {
@@ -779,7 +830,7 @@ export class App {
   }
 
   /**
-   * Import reports render above both tabs and can fill the viewport, so a tab switch
+   * Import reports render above the tabs and can fill the viewport, so a tab switch
    * must bring the tab content into view; otherwise the click looks like a no-op.
    */
   protected selectTab(tab: AppTab): void {

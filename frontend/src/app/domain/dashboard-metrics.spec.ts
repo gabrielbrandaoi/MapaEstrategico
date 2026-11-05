@@ -11,7 +11,7 @@ describe('calculateDashboardStatistics', () => {
       participant('fellow-2', 'fellow', 1.5),
       participant('fellow-3', 'fellow', null),
     ];
-    const pairs = buildProximityPairs(participants).map((pair) => ({
+    const pairs = buildProximityPairs(participants, 100).map((pair) => ({
       ...pair,
       route:
         pair.tutorId === 'tutor-1'
@@ -39,6 +39,23 @@ describe('calculateDashboardStatistics', () => {
       fellowsWithMultipleNearbyTutorsCount: 1,
     });
     expect(statistics.averageNearestStraightLineKm).toBeCloseTo(44.5, 0);
+  });
+
+  it('counts additional candidates within the new default radius without changing the 50/100 km KPIs', () => {
+    const participants = [
+      participant('tutor-1', 'tutor', 0.2),
+      participant('tutor-2', 'tutor', 1),
+      participant('fellow-1', 'fellow', 0.5),
+      participant('fellow-2', 'fellow', 1.5),
+    ];
+    const pairs = buildProximityPairs(participants);
+    const statistics = calculateDashboardStatistics(participants, pairs);
+    expect(pairs).toHaveLength(4);
+    expect(statistics.fellowsWithMultipleNearbyTutorsCount).toBe(2);
+    expect(statistics.geodesicWithin50Count).toBe(1);
+    expect(statistics.geodesicWithin100Count).toBe(2);
+    expect(statistics.successfulRouteCount).toBe(0);
+    expect(statistics.averageRoadKm).toBeNull();
   });
 
   it('returns null road and distance averages when none can be calculated', () => {

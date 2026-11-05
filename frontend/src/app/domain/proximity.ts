@@ -1,9 +1,10 @@
+import { DEFAULT_ALLOCATION_CONFIG } from './allocation.models';
 import { haversineKm } from './distance';
 import { Participant, ProximityPair } from './models';
 
 export function buildProximityPairs(
   participants: readonly Participant[],
-  maxStraightLineKm = 100,
+  maxStraightLineKm = DEFAULT_ALLOCATION_CONFIG.raioMaxKm,
 ): ProximityPair[] {
   const tutors = participants.filter(
     (participant) => participant.type === 'tutor' && participant.location,

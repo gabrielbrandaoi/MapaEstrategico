@@ -1,6 +1,6 @@
 # ADR 0002 — Semântica das distâncias
 - Status: Proposto
-- Círculos 50/100 km representam raio geodésico em linha reta.
+- Círculos 50/130 km representam raio geodésico em linha reta.
 - Classificação de proximidade rodoviária usa distância do RoutingProvider.
 - Resultado indisponível permanece indisponível; nunca substituir silenciosamente por Haversine.
 - UI e relatórios nomeiam claramente cada métrica.
