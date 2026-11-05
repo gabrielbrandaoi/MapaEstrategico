@@ -354,9 +354,51 @@ h2 {
 }
 
 .import-panel,
-.import-summary {
+.import-summary,
+.import-detailed-report,
+.import-alerts {
   margin-bottom: 1.25rem;
   padding: 1.35rem 1.5rem;
+}
+
+.import-detailed-report .summary-pills {
+  margin-bottom: 1rem;
+}
+
+.import-detailed-report .table-scroll,
+.import-alerts .table-scroll {
+  border: 1px solid #eef1f2;
+  border-radius: 0.7rem;
+}
+
+.import-alerts .table-scroll {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.import-alerts thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafb;
+}
+
+.import-details {
+  margin-top: 1rem;
+  border-top: 1px solid #eef1f2;
+  padding-top: 0.85rem;
+}
+
+.import-details > summary {
+  color: #3f5562;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.import-details > summary:focus-visible {
+  outline: 3px solid rgba(59, 149, 138, 0.25);
+  outline-offset: 2px;
+  border-radius: 0.3rem;
 }
 
 .import-selectors,
@@ -1610,7 +1652,9 @@ td {
   }
 
   .import-panel,
-  .import-summary {
+  .import-summary,
+  .import-detailed-report,
+  .import-alerts {
     padding: 1rem;
   }
 

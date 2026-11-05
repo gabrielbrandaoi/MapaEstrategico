@@ -5,6 +5,7 @@ import {
 import { isPlatformBrowser } from '@angular/common';
 import type { PontoMapa, VinculoMapa } from '../domain/mapa.models';
 import { LeafletLayersService, type LeafletMapSession, type MapaState } from './leaflet-layers.service';
+import { LEAFLET_LOADER } from './leaflet-loader';
 import { MAPA_LEGENDA } from './mapa.config';
 
 @Component({
@@ -36,10 +37,12 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
   @ViewChild('mapHost', { static: true }) private readonly mapHost!: ElementRef<HTMLDivElement>;
   private readonly platformId = inject(PLATFORM_ID);
   private readonly layers = inject(LeafletLayersService);
+  private readonly loadLeaflet = inject(LEAFLET_LOADER);
   private readonly ready = signal(false);
   private session: LeafletMapSession | null = null;
   private observer: ResizeObserver | null = null;
   private destroyed = false;
+  private initializing = false;
 
   constructor() {
     effect(() => {
@@ -49,10 +52,33 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
   }
 
   async ngAfterViewInit(): Promise<void> {
-    if (!isPlatformBrowser(this.platformId)) return;
+    await this.inicializar();
+  }
+
+  verBrasil(): void {
+    this.session?.verBrasil();
+    this.tutorSelected.emit(null);
+  }
+
+  tentarBase(): void {
+    if (this.session) void this.session.loadBase();
+    else void this.inicializar();
+  }
+
+  ngOnDestroy(): void {
+    this.destroyed = true;
+    this.observer?.disconnect();
+    this.session?.destroy();
+    this.session = null;
+  }
+
+  private async inicializar(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId) || this.session || this.initializing) return;
+    this.initializing = true;
+    this.loading.set(true);
+    this.baseError.set(null);
     try {
-      // Importing Leaflet eagerly accesses window and breaks SSR.
-      const leaflet = await import('leaflet');
+      const leaflet = await this.loadLeaflet();
       if (this.destroyed) return;
       this.session = this.layers.create(leaflet, this.mapHost.nativeElement, {
         tutorSelected: (id) => this.tutorSelected.emit(id),
@@ -64,24 +90,15 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
         this.observer.observe(this.mapHost.nativeElement);
       }
       this.ready.set(true);
-    } catch {
+    } catch (error: unknown) {
+      this.session?.destroy();
+      this.session = null;
       this.loading.set(false);
-      this.baseError.set('Não foi possível inicializar o mapa.');
+      const detalhe = error instanceof Error && error.message ? ` Detalhe: ${error.message}` : '';
+      this.baseError.set(`Não foi possível inicializar o mapa.${detalhe}`);
+    } finally {
+      this.initializing = false;
     }
-  }
-
-  verBrasil(): void {
-    this.session?.verBrasil();
-    this.tutorSelected.emit(null);
-  }
-
-  tentarBase(): void { void this.session?.loadBase(); }
-
-  ngOnDestroy(): void {
-    this.destroyed = true;
-    this.observer?.disconnect();
-    this.session?.destroy();
-    this.session = null;
   }
 
   private state(): MapaState {

@@ -1,6 +1,6 @@
 <div class="app-shell">
   <aside class="sidebar" aria-label="Navegação principal">
-    <button class="brand" type="button" (click)="activeTab.set('overview')">
+    <button class="brand" type="button" (click)="selectTab('overview')">
       <span class="brand-mark" aria-hidden="true">ME</span>
       <span>
         <strong>Mapa Estratégico</strong>
@@ -13,7 +13,7 @@
         type="button"
         [class.is-active]="activeTab() === 'overview'"
         [attr.aria-current]="activeTab() === 'overview' ? 'page' : null"
-        (click)="activeTab.set('overview')"
+        (click)="selectTab('overview')"
       >
         <span class="nav-icon" aria-hidden="true">◫</span>
         Visão geral
@@ -22,7 +22,7 @@
         type="button"
         [class.is-active]="activeTab() === 'relationships'"
         [attr.aria-current]="activeTab() === 'relationships' ? 'page' : null"
-        (click)="activeTab.set('relationships')"
+        (click)="selectTab('relationships')"
       >
         <span class="nav-icon" aria-hidden="true">⇄</span>
         Relações e rotas
@@ -297,7 +297,7 @@
               </tbody>
             </table>
           </div>
-          <details>
+          <details class="import-details">
             <summary>
               Pontos de atenção: {{ relatorio.ocorrencias.length }} avisos/erros ·
               {{ relatorio.divergencias.length }} divergências
@@ -335,7 +335,7 @@
       }
 
       @if (alertasImportados().length > 0) {
-        <section class="panel" aria-labelledby="import-alerts-title">
+        <section class="panel import-alerts" aria-labelledby="import-alerts-title">
           <div class="panel-heading">
             <div>
               <span class="eyebrow">Alertas dos tutores</span>
@@ -463,7 +463,7 @@
         <section class="page-heading">
           <div>
             <span class="eyebrow">Painel estratégico</span>
-            <h1>Visão geral</h1>
+            <h1 id="overview-title" tabindex="-1">Visão geral</h1>
             <p>
               Explore proximidade geográfica e compare opções. Nenhuma relação representa uma
               atribuição institucional.
@@ -955,7 +955,7 @@
         <section class="page-heading">
           <div>
             <span class="eyebrow">Análise de proximidade</span>
-            <h1>Relações e rotas</h1>
+            <h1 id="relationships-title" tabindex="-1">Relações e rotas</h1>
             <p>
               Compare pares próximos em linha reta e, mediante autorização, calcule distâncias
               rodoviárias pelo roteador.

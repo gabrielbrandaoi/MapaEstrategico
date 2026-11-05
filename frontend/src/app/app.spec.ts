@@ -137,6 +137,42 @@ describe('App', () => {
     expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
   });
 
+  it('brings the overview and its map into view when "Visão geral" is clicked after an import', async () => {
+    vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue(RELATIONSHIP_WORKBOOK);
+    // jsdom does not implement scrollIntoView; record which element the app scrolls to.
+    const scrolled: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      const fixture = TestBed.createComponent(App);
+      fixture.autoDetectChanges();
+      await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.append(root);
+      expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(true);
+      // Import reports stay above the tab content on both tabs.
+      expect(root.querySelector('.map-workspace')?.previousElementSibling).not.toBeNull();
+
+      navButton(root, 'Visão geral').click();
+      await fixture.whenStable();
+
+      const heading = root.querySelector<HTMLElement>('#overview-title');
+      expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
+      expect(scrolled).toContain(heading);
+      expect(document.activeElement).toBe(heading);
+      expect(mapStub(fixture).pontos()).toHaveLength(2);
+
+      navButton(root, 'Relações e rotas').click();
+      await fixture.whenStable();
+      expect(scrolled).toContain(root.querySelector('#relationships-title'));
+      root.remove();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it('projects a workbook, selects a tutor from the map and deselects back to Brazil', async () => {
     vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue(RELATIONSHIP_WORKBOOK);
     const fixture = TestBed.createComponent(App);

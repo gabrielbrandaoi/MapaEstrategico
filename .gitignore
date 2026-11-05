@@ -10,6 +10,7 @@
 .env
 .env.*
 !.env.example
+.github/
 
 # Angular / Node
 node_modules/

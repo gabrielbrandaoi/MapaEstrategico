@@ -1,9 +1,11 @@
-import { CommonModule } from '@angular/common';
+import { CommonModule, DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  Injector,
   PendingTasks,
+  afterNextRender,
   computed,
   inject,
   signal,
@@ -47,6 +49,12 @@ type RoadFilter = 'all' | 'not-calculated' | 'success' | 'unavailable' | 'error'
 type PairSort = 'straight-line' | 'road-distance';
 type ParticipantSort = 'name' | 'city' | 'type' | 'source-row';
 type GeoStatus = 'idle' | 'loading' | 'ready' | 'error';
+type AppTab = 'overview' | 'relationships';
+
+const TAB_HEADING_IDS: Record<AppTab, string> = {
+  overview: 'overview-title',
+  relationships: 'relationships-title',
+};
 
 interface CenarioLote {
   readonly loteId: string;
@@ -78,6 +86,8 @@ export class App {
   private readonly destroyRef = inject(DestroyRef);
   private readonly mapProjection = inject(MapProjectionService);
   private readonly pendingTasks = inject(PendingTasks);
+  private readonly injector = inject(Injector);
+  private readonly document = inject(DOCUMENT);
   private readonly sessionCleared = new Subject<void>();
   private importSequence = 0;
   private sessionGeneration = 0;
@@ -100,7 +110,7 @@ export class App {
     return id === null ? null : (this.participantById(id) ?? null);
   });
   protected readonly selectedTutorId = signal<string | null>(null);
-  protected readonly activeTab = signal<'overview' | 'relationships'>('overview');
+  protected readonly activeTab = signal<AppTab>('overview');
   protected readonly searchText = signal('');
   protected readonly tutorFilter = signal(true);
   protected readonly fellowFilter = signal(true);
@@ -682,7 +692,26 @@ export class App {
 
   protected viewOnMap(participant: Participant): void {
     this.selectParticipant(participant);
-    this.activeTab.set('overview');
+    this.selectTab('overview');
+  }
+
+  /**
+   * Import reports render above both tabs and can fill the viewport, so a tab switch
+   * must bring the tab content into view; otherwise the click looks like a no-op.
+   */
+  protected selectTab(tab: AppTab): void {
+    this.activeTab.set(tab);
+    afterNextRender(
+      () => {
+        const heading = this.document.getElementById(TAB_HEADING_IDS[tab]);
+        if (!heading) return;
+        if (typeof heading.scrollIntoView === 'function') {
+          heading.scrollIntoView({ block: 'start' });
+        }
+        heading.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
   }
 
   protected calculateRoadRoute(pair: ProximityPair): void {
