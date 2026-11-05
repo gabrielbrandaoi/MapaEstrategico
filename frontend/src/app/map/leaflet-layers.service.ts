@@ -195,8 +195,8 @@ export class LeafletMapSession {
     this.destroyed = true;
     this.abort?.abort();
     this.abort = null;
-    this.tiles?.off();
     this.tiles?.remove();
+    this.tiles?.off();
     this.tiles = null;
     for (const group of [this.base, this.markers, this.circles, this.links]) this.clear(group);
     this.map.off();
@@ -246,8 +246,8 @@ export class LeafletMapSession {
   private updateTiles(): void {
     if (!this.state?.tilesEnabled) {
       this.tileFailed = false;
-      this.tiles?.off();
       this.tiles?.remove();
+      this.tiles?.off();
       this.tiles = null;
       return;
     }
@@ -260,8 +260,8 @@ export class LeafletMapSession {
     });
     this.tiles.on('tileerror', () => {
       this.tileFailed = true;
-      this.tiles?.off();
       this.tiles?.remove();
+      this.tiles?.off();
       this.tiles = null;
       // Deliberately silent: the local GeoJSON remains the primary map.
     });

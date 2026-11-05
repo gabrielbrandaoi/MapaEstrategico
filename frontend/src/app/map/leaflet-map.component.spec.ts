@@ -88,6 +88,53 @@ describe('LeafletMapComponent initialization', () => {
     fixture.destroy();
   });
 
+  it('recreates the Leaflet session when the template replaces the map host', async () => {
+    TestBed.overrideComponent(LeafletMapComponent, {
+      set: {
+        template: '@if (showTutors()) { <div #mapHost></div> } @else { <div #mapHost></div> }',
+      },
+    });
+    loader.mockResolvedValue(L);
+    const first = fakeSession();
+    const second = fakeSession();
+    create.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const fixture = TestBed.createComponent(LeafletMapComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+    const oldHost = create.mock.calls[0][1];
+    fixture.componentRef.setInput('showTutors', false);
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(first.destroy).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][1]).not.toBe(oldHost);
+    expect(create.mock.calls[1][1]).toBe(fixture.nativeElement.querySelector('div'));
+    expect(second.render).toHaveBeenCalled();
+    fixture.destroy();
+    expect(second.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('does not initialize Leaflet on an obsolete host after an asynchronous load', async () => {
+    TestBed.overrideComponent(LeafletMapComponent, {
+      set: {
+        template: '@if (showTutors()) { <div #mapHost></div> } @else { <div #mapHost></div> }',
+      },
+    });
+    let resolveFirst!: (leaflet: LeafletModule) => void;
+    loader.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }));
+    loader.mockResolvedValueOnce(L);
+    const fixture = TestBed.createComponent(LeafletMapComponent);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('showTutors', false);
+    fixture.detectChanges();
+    await settle(fixture);
+    resolveFirst(L);
+    await settle(fixture);
+    expect(create).toHaveBeenCalledOnce();
+    expect(create.mock.calls[0][1]).toBe(fixture.nativeElement.querySelector('div'));
+    fixture.destroy();
+  });
+
   it('explains simulation statuses and reflects the selected minimum in the legend', async () => {
     loader.mockResolvedValue(L);
     const fixture = TestBed.createComponent(LeafletMapComponent);

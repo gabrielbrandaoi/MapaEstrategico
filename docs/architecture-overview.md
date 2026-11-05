@@ -21,6 +21,10 @@ dos pares depende do cadastro, não das respostas de roteamento.
 
 A sessão Leaflet reconcilia marcadores por chave. Zoom e resize atualizam posições
 sem reconstruir os grupos; alteração de dados atualiza ícone, popup e seleção.
+Se o elemento hospedeiro for substituído, a sessão anterior é destruída e o
+mapa é inicializado no novo elemento; carregamentos pendentes do elemento antigo
+são descartados. A altura do mapa é independente da legenda, que permanece no
+fluxo da página sem recorte.
 O agrupamento municipal permanece distinto de clustering espacial por zoom.
 Medições, limites e próximos passos estão no
 [relatório de desempenho](performance-report.md).

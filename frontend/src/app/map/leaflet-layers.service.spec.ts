@@ -502,6 +502,7 @@ describe('sessão Leaflet: lifecycle e camadas', () => {
     session.render(state({ tilesEnabled: true }));
     expect(api.tileLayer).toHaveBeenCalledOnce();
     expect(tile.remove).toHaveBeenCalledOnce();
+    expect(tile.remove.mock.invocationCallOrder[0]).toBeLessThan(tile.off.mock.invocationCallOrder[0]);
     expect(callbacks.baseState).not.toHaveBeenCalledWith(false, expect.any(String));
     session.render(state({ tilesEnabled: false }));
     session.render(state({ tilesEnabled: true }));

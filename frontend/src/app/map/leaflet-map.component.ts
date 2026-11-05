@@ -1,6 +1,6 @@
 import {
-  AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, OnDestroy, PLATFORM_ID,
-  ViewChild, effect, inject, input, output, signal,
+  ChangeDetectionStrategy, Component, ElementRef, OnDestroy, PLATFORM_ID,
+  effect, inject, input, output, signal, viewChild,
 } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import type { PontoMapa, VinculoMapa } from '../domain/mapa.models';
@@ -17,7 +17,7 @@ import { ALLOCATION_PALETTE } from './allocation-palette';
   styleUrl: './leaflet-map.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class LeafletMapComponent implements AfterViewInit, OnDestroy {
+export class LeafletMapComponent implements OnDestroy {
   readonly pontos = input<readonly PontoMapa[]>([]);
   readonly simulation = input(false);
   readonly allocation = input<AllocationResult | null>(null);
@@ -42,7 +42,7 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
   readonly legendaAberta = signal(true);
   readonly legenda = MAPA_LEGENDA;
   readonly fellowColors = MAPA_CONFIG.fellow;
-  @ViewChild('mapHost', { static: true }) private readonly mapHost!: ElementRef<HTMLDivElement>;
+  private readonly mapHost = viewChild<ElementRef<HTMLDivElement>>('mapHost');
   private readonly platformId = inject(PLATFORM_ID);
   private readonly layers = inject(LeafletLayersService);
   private readonly loadLeaflet = inject(LEAFLET_LOADER);
@@ -53,14 +53,23 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
   private initializing = false;
 
   constructor() {
+    effect((onCleanup) => {
+      const host = this.mapHost()?.nativeElement;
+      if (!host) return;
+      void this.inicializar(host);
+      onCleanup(() => {
+        this.observer?.disconnect();
+        this.observer = null;
+        this.session?.destroy();
+        this.session = null;
+        this.initializing = false;
+        this.ready.set(false);
+      });
+    });
     effect(() => {
       const state = this.state();
       if (this.ready()) this.session?.render(state);
     });
-  }
-
-  async ngAfterViewInit(): Promise<void> {
-    await this.inicializar();
   }
 
   verBrasil(): void {
@@ -74,7 +83,10 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
 
   tentarBase(): void {
     if (this.session) void this.session.loadBase();
-    else void this.inicializar();
+    else {
+      const host = this.mapHost()?.nativeElement;
+      if (host) void this.inicializar(host);
+    }
   }
 
   ngOnDestroy(): void {
@@ -84,32 +96,33 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
     this.session = null;
   }
 
-  private async inicializar(): Promise<void> {
+  private async inicializar(host: HTMLDivElement): Promise<void> {
     if (!isPlatformBrowser(this.platformId) || this.session || this.initializing) return;
     this.initializing = true;
     this.loading.set(true);
     this.baseError.set(null);
     try {
       const leaflet = await this.loadLeaflet();
-      if (this.destroyed) return;
-      this.session = this.layers.create(leaflet, this.mapHost.nativeElement, {
+      if (this.destroyed || this.mapHost()?.nativeElement !== host) return;
+      this.session = this.layers.create(leaflet, host, {
         tutorSelected: (id) => this.tutorSelected.emit(id),
         pontoSelected: (ponto) => this.pontoSelected.emit(ponto),
         baseState: (loading, error) => { this.loading.set(loading); this.baseError.set(error); },
       });
       if (typeof ResizeObserver !== 'undefined') {
         this.observer = new ResizeObserver(() => this.session?.resize());
-        this.observer.observe(this.mapHost.nativeElement);
+        this.observer.observe(host);
       }
       this.ready.set(true);
     } catch (error: unknown) {
+      if (this.destroyed || this.mapHost()?.nativeElement !== host) return;
       this.session?.destroy();
       this.session = null;
       this.loading.set(false);
       const detalhe = error instanceof Error && error.message ? ` Detalhe: ${error.message}` : '';
       this.baseError.set(`Não foi possível inicializar o mapa.${detalhe}`);
     } finally {
-      this.initializing = false;
+      if (this.mapHost()?.nativeElement === host) this.initializing = false;
     }
   }
 
