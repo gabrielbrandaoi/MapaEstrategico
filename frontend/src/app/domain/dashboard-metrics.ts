@@ -26,22 +26,42 @@ export function calculateDashboardStatistics(
   );
   const fellows = participants.filter((participant) => participant.type === 'fellow');
   const locatedFellows = fellows.filter((participant) => participant.location !== null);
-  const nearestDistances = locatedFellows.flatMap((fellow) => {
+  const nearestDistances: number[] = [];
+  let geodesicWithin50Count = 0;
+  let geodesicWithin100Count = 0;
+
+  for (const fellow of locatedFellows) {
     const fellowLocation = fellow.location;
     if (!fellowLocation) {
-      return [];
+      continue;
     }
 
-    const distances = tutors.flatMap((tutor) => {
+    let nearestDistance: number | null = null;
+    for (const tutor of tutors) {
       const tutorLocation = tutor.location;
       if (!tutorLocation) {
-        return [];
+        continue;
       }
+
       const distance = haversineKm(tutorLocation, fellowLocation);
-      return distance === null ? [] : [distance];
-    });
-    return distances.length > 0 ? [Math.min(...distances)] : [];
-  });
+      if (distance !== null && (nearestDistance === null || distance < nearestDistance)) {
+        nearestDistance = distance;
+      }
+    }
+
+    if (nearestDistance === null) {
+      continue;
+    }
+
+    nearestDistances.push(nearestDistance);
+    if (nearestDistance <= 50) {
+      geodesicWithin50Count += 1;
+    }
+    if (nearestDistance <= 100) {
+      geodesicWithin100Count += 1;
+    }
+  }
+
   const nearbyCounts = new Map<string, number>();
   for (const pair of pairs) {
     nearbyCounts.set(pair.fellowId, (nearbyCounts.get(pair.fellowId) ?? 0) + 1);
@@ -57,22 +77,6 @@ export function calculateDashboardStatistics(
       return distanceMeters !== null && distanceMeters <= 50_000 ? [pair.fellowId] : [];
     }),
   );
-  const withinGeodesicRadius = (fellow: Participant, radiusKm: number): boolean => {
-    const fellowLocation = fellow.location;
-    if (!fellowLocation) {
-      return false;
-    }
-
-    return tutors.some((tutor) => {
-      const tutorLocation = tutor.location;
-      if (!tutorLocation) {
-        return false;
-      }
-      const distance = haversineKm(tutorLocation, fellowLocation);
-      return distance !== null && distance <= radiusKm;
-    });
-  };
-
   return {
     tutorCount: participants.filter((participant) => participant.type === 'tutor').length,
     fellowCount: fellows.length,
@@ -80,10 +84,8 @@ export function calculateDashboardStatistics(
     withoutCoordinatesCount: participants.filter((participant) => participant.location === null)
       .length,
     locatedFellowCount: locatedFellows.length,
-    geodesicWithin50Count: locatedFellows.filter((fellow) => withinGeodesicRadius(fellow, 50))
-      .length,
-    geodesicWithin100Count: locatedFellows.filter((fellow) => withinGeodesicRadius(fellow, 100))
-      .length,
+    geodesicWithin50Count,
+    geodesicWithin100Count,
     averageNearestStraightLineKm: nearestDistances.length > 0 ? average(nearestDistances) : null,
     successfulRouteCount: successfulRoutes.length,
     averageRoadKm: successfulRoutes.length > 0 ? average(successfulRoutes) : null,

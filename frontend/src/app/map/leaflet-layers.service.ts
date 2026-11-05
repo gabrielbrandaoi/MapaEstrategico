@@ -29,6 +29,14 @@ interface MapCallbacks {
   baseState(loading: boolean, error: string | null): void;
 }
 
+interface MarkerRecord {
+  readonly layer: L.Marker;
+  coordinate: L.LatLngTuple;
+  offset: readonly [number, number];
+  signature: string;
+  points: readonly PontoMapa[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class LeafletLayersService {
   private readonly document = inject(DOCUMENT);
@@ -47,6 +55,7 @@ export class LeafletMapSession {
   private readonly links: L.LayerGroup;
   private readonly renderer: L.Renderer;
   private readonly brasil: L.LatLngBounds;
+  private readonly markerRecords = new Map<string, MarkerRecord>();
   private tiles: L.TileLayer | null = null;
   private tileFailed = false;
   private state: MapaState | null = null;
@@ -55,6 +64,7 @@ export class LeafletMapSession {
   private viewportKey: string | null = null;
   private forceBrasil = false;
   private lastSize = '';
+  private dataDrawn = false;
 
   constructor(
     private readonly leaflet: typeof L,
@@ -119,7 +129,7 @@ export class LeafletMapSession {
     const old = this.state;
     this.state = state;
     this.updateTiles();
-    this.drawData();
+    if (!old || !sameLayerState(old, state)) this.drawData();
     const coords = coordenadasSelecao(state.pontos, state.vinculos, state.selectedTutorId);
     const viewportKey = `${state.selectedTutorId ?? ''}:${JSON.stringify(coords)}`;
     if (!old || old.resetKey !== state.resetKey) {
@@ -142,7 +152,8 @@ export class LeafletMapSession {
     this.lastSize = size;
     this.map.invalidateSize({ animate: false, pan: false });
     this.fitContext();
-    this.drawData();
+    if (!this.dataDrawn) this.drawData();
+    else this.repositionMarkers();
   }
 
   verBrasil(): void {
@@ -150,17 +161,39 @@ export class LeafletMapSession {
     this.fitContext();
   }
 
+  ajustarAosPontos(): void {
+    const state = this.state;
+    if (this.destroyed || !state) return;
+    const allocated = new Set(state.vinculos.map((v) => v.bolsistaId));
+    const coords = state.pontos
+      .filter((p) => coordenadaValida(p.coordenada)
+        && (p.tipo === 'tutor' ? state.showTutors : state.showFellows)
+        && (!state.alertsOnly || p.alertas.length > 0)
+        && (!state.unallocatedOnly || (p.tipo === 'tutor' ? p.semBolsista : !allocated.has(p.id))))
+      .map((p) => [p.coordenada!.latitude, p.coordenada!.longitude] as [number, number]);
+    if (!coords.length) {
+      this.verBrasil();
+      return;
+    }
+    this.forceBrasil = false;
+    this.fitCoordinates(coords, MAPA_CONFIG.maxZoom);
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
     this.abort?.abort();
+    this.abort = null;
     this.tiles?.off();
     this.tiles?.remove();
     this.tiles = null;
     for (const group of [this.base, this.markers, this.circles, this.links]) this.clear(group);
     this.map.off();
     this.map.remove();
+    this.markerRecords.clear();
     this.state = null;
+    this.viewportKey = null;
+    this.lastSize = '';
   }
 
   private readonly backgroundClick = (): void => {
@@ -170,7 +203,7 @@ export class LeafletMapSession {
 
   private readonly zoomEnd = (): void => {
     // Recompute visual-only pixel displacement after zoom, not source coordinates.
-    if (!this.destroyed && this.state) this.drawData();
+    if (!this.destroyed && this.state) this.repositionMarkers();
   };
 
   private fitContext(): void {
@@ -178,6 +211,11 @@ export class LeafletMapSession {
     const state = this.state;
     const coords = state && !this.forceBrasil && state.selectedTutorId
       ? coordenadasSelecao(state.pontos, state.vinculos, state.selectedTutorId) : [];
+    this.fitCoordinates(coords, coords.length ? MAPA_CONFIG.selectedMaxZoom : MAPA_CONFIG.maxZoom);
+  }
+
+  private fitCoordinates(coords: [number, number][], maxZoom: number): void {
+    if (!this.host.clientWidth || !this.host.clientHeight) return;
     const bounds = coords.length ? this.leaflet.latLngBounds(coords) : this.brasil;
     const inset = Math.max(0, Math.min(MAPA_CONFIG.padding,
       (this.host.clientWidth - 1) / 4, (this.host.clientHeight - 1) / 4));
@@ -189,7 +227,7 @@ export class LeafletMapSession {
     this.map.setMinZoom(Math.min(brazilZoom, contextZoom));
     this.map.fitBounds(bounds, {
       padding: [inset, inset],
-      maxZoom: coords.length ? MAPA_CONFIG.selectedMaxZoom : MAPA_CONFIG.maxZoom,
+      maxZoom,
       animate: false,
     });
   }
@@ -222,7 +260,7 @@ export class LeafletMapSession {
   private drawData(): void {
     const state = this.state;
     if (!state || !this.host.clientWidth || !this.host.clientHeight || !Number.isFinite(this.map.getZoom())) return;
-    for (const group of [this.markers, this.circles, this.links]) this.clear(group);
+    for (const group of [this.circles, this.links]) this.clear(group);
     const allocated = new Set(state.vinculos.map((v) => v.bolsistaId));
     const selectedLinks = state.vinculos.filter((v) => v.tutorId === state.selectedTutorId);
     const linked = new Set(selectedLinks.map((v) => v.bolsistaId));
@@ -255,25 +293,24 @@ export class LeafletMapSession {
         offsets.set(id, offset);
       }
     }
-    const position = (p: PontoMapa, key: string): L.LatLngTuple => {
-      const c = p.coordenada!;
-      const [x, y] = offsets.get(key) ?? [0, 0];
-      if (x === 0 && y === 0) return [c.latitude, c.longitude];
-      const origin = this.map.project([c.latitude, c.longitude]);
-      const point = this.map.unproject(this.leaflet.point(origin.x + x, origin.y + y));
-      return [point.lat, point.lng];
-    };
+    const activeMarkerKeys = new Set<string>();
     if (state.showTutors) {
       for (const tutor of tutors) {
         const selected = tutor.id === state.selectedTutorId;
         const color = selected ? MAPA_CONFIG.tutor.selected : tutor.alertas.length
           ? MAPA_CONFIG.tutor.alert : tutor.semBolsista ? MAPA_CONFIG.tutor.empty : MAPA_CONFIG.tutor.normal;
         const label = `T${tutor.alertas.length ? '!' : tutor.semBolsista ? '∅' : ''}`;
-        this.marker(position(tutor, `tutor:${tutor.id}`), label, color, selected, `Tutor: ${tutor.nome}`, this.popup(tutor),
+        const key = `tutor:${tutor.id}`;
+        const coordinate: L.LatLngTuple = [tutor.coordenada!.latitude, tutor.coordenada!.longitude];
+        this.marker(key, coordinate, offsets.get(key) ?? [0, 0], label, color, selected, `Tutor: ${tutor.nome}`,
+          JSON.stringify([tutor.tipo, tutor.nome, tutor.municipio, tutor.semBolsista, tutor.alertas,
+            tutor.coordenada?.origem, tutor.coordenada?.fonte, tutor.coordenada?.latitude, tutor.coordenada?.longitude]),
+          [tutor], () => this.popup(tutor),
           () => {
             this.callbacks.tutorSelected(selected ? null : tutor.id);
             this.callbacks.pontoSelected(tutor);
           });
+        activeMarkerKeys.add(key);
       }
     }
     if (state.showFellows) {
@@ -281,30 +318,29 @@ export class LeafletMapSession {
           const selected = group.estado === 'selecionado';
           const unallocated = group.estado === 'sem-vinculo';
           const first = group.pontos[0];
-          const content = this.document.createElement('div');
-          const title = this.document.createElement('strong');
-          title.textContent = `${first.municipio ?? 'Município não identificado'} — ${group.pontos.length} bolsista(s)${selected ? ' vinculado(s) ao tutor selecionado' : unallocated ? ' sem vínculo' : ''}`;
-          content.append(title);
-          const note = this.document.createElement('p');
-          note.textContent = 'Agrupamento por código municipal; âncora em coordenada de origem. Escolha um bolsista:';
-          content.append(note);
-          for (const p of group.pontos) {
-            const button = this.document.createElement('button');
-            button.type = 'button';
-            button.textContent = p.nome;
-            button.style.display = 'block';
-            button.addEventListener('click', () => this.callbacks.pontoSelected(p));
-            content.append(button);
-            const origin = this.document.createElement('small');
-            origin.textContent = this.origem(p);
-            content.append(origin);
-          }
-          this.marker(position(first, group.chave),
+          const key = group.chave;
+          const coordinate: L.LatLngTuple = [group.coordenada.latitude, group.coordenada.longitude];
+          const title = `${first.municipio ?? 'Município não identificado'} — ${group.pontos.length} bolsista(s)${selected ? ' vinculado(s) ao tutor selecionado' : unallocated ? ' sem vínculo' : ''}`;
+          const signature = JSON.stringify([group.estado, first.municipio, group.pontos.map((p) => [
+            p.id, p.nome, p.municipio, p.coordenada?.latitude, p.coordenada?.longitude,
+            p.coordenada?.origem, p.coordenada?.fonte,
+          ])]);
+          this.marker(key, coordinate, offsets.get(key) ?? [0, 0],
             selected ? `◆ ${group.pontos.length}` : unallocated ? `○ ${group.pontos.length}` : String(group.pontos.length),
-            selected ? MAPA_CONFIG.fellow.selected : unallocated ? MAPA_CONFIG.fellow.unallocated : MAPA_CONFIG.fellow.normal, selected,
-            title.textContent, content, () => {
+            selected ? MAPA_CONFIG.fellow.selected : unallocated ? MAPA_CONFIG.fellow.unallocated : MAPA_CONFIG.fellow.normal,
+            selected, title, signature, group.pontos, () => this.popupGrupo(group.pontos, title), () => {
               if (group.pontos.length === 1) this.callbacks.pontoSelected(first);
             });
+          activeMarkerKeys.add(key);
+      }
+    }
+    for (const [key, record] of this.markerRecords) {
+      if (!activeMarkerKeys.has(key)) {
+        this.markers.removeLayer(record.layer);
+        record.layer.off();
+        record.layer.unbindPopup();
+        record.layer.unbindTooltip();
+        this.markerRecords.delete(key);
       }
     }
     if (state.showLinks && selectedTutor) {
@@ -314,12 +350,48 @@ export class LeafletMapSession {
         if (fellow && visibleIds.has(fellow.id)) this.drawLink(selectedTutor, fellow, v);
       }
     }
+    this.dataDrawn = true;
   }
 
   private marker(
-    position: L.LatLngTuple, label: string, color: string, selected: boolean,
-    title: string, content: HTMLElement, click: () => void,
+    key: string, coordinate: L.LatLngTuple, offset: readonly [number, number],
+    label: string, color: string, selected: boolean, title: string, contentSignature: string,
+    points: readonly PontoMapa[], createContent: () => HTMLElement, click: () => void,
   ): void {
+    const signature = JSON.stringify([label, color, selected, title, contentSignature]);
+    const position = this.visualPosition(coordinate, offset);
+    const existing = this.markerRecords.get(key);
+    if (existing) {
+      existing.layer.setLatLng(position);
+      const changed = existing.signature !== signature || !samePoints(existing.points, points);
+      existing.coordinate = coordinate;
+      existing.offset = offset;
+      if (changed) {
+        existing.layer.setIcon(this.markerIcon(label, color, selected));
+        existing.layer.setZIndexOffset(selected ? 1000 : label.startsWith('T') ? 500 : 0);
+        existing.layer.options.title = title;
+        existing.layer.options.alt = title;
+        const element = existing.layer.getElement();
+        if (element) element.title = title;
+        existing.layer.bindPopup(createContent(), { maxWidth: 340, autoPan: false });
+        existing.layer.off('click').on('click', click);
+        existing.signature = signature;
+        existing.points = points;
+      }
+      return;
+    }
+    const marker = this.leaflet.marker(position, {
+      icon: this.markerIcon(label, color, selected),
+      title, alt: title, keyboard: true, bubblingMouseEvents: false,
+      zIndexOffset: selected ? 1000 : label.startsWith('T') ? 500 : 0,
+    });
+    marker.bindPopup(createContent(), { maxWidth: 340, autoPan: false });
+    marker.on('click', click);
+    marker.addTo(this.markers);
+    this.markerRecords.set(key, { layer: marker, coordinate, offset, signature, points });
+  }
+
+  private markerIcon(label: string, color: string, selected: boolean): L.DivIcon {
     const symbol = this.document.createElement('span');
     symbol.textContent = label;
     Object.assign(symbol.style, {
@@ -329,14 +401,45 @@ export class LeafletMapSession {
       border: selected ? '3px solid #fff' : '2px solid #fff',
       boxShadow: selected ? '0 0 0 3px #35245b' : '0 1px 5px #0008',
     });
-    const marker = this.leaflet.marker(position, {
-      icon: this.leaflet.divIcon({ html: symbol, className: 'map-symbol', iconSize: [36, 36], iconAnchor: [18, 18] }),
-      title, alt: title, keyboard: true, bubblingMouseEvents: false,
-      zIndexOffset: selected ? 1000 : label.startsWith('T') ? 500 : 0,
+    return this.leaflet.divIcon({
+      html: symbol, className: 'map-symbol', iconSize: [36, 36], iconAnchor: [18, 18],
     });
-    marker.bindPopup(content, { maxWidth: 340, autoPan: false });
-    marker.on('click', click);
-    marker.addTo(this.markers);
+  }
+
+  private visualPosition(coordinate: L.LatLngTuple, offset: readonly [number, number]): L.LatLngTuple {
+    const [x, y] = offset;
+    if (x === 0 && y === 0) return coordinate;
+    const origin = this.map.project(coordinate);
+    const point = this.map.unproject(this.leaflet.point(origin.x + x, origin.y + y));
+    return [point.lat, point.lng];
+  }
+
+  private repositionMarkers(): void {
+    for (const record of this.markerRecords.values()) {
+      record.layer.setLatLng(this.visualPosition(record.coordinate, record.offset));
+    }
+  }
+
+  private popupGrupo(pontos: readonly PontoMapa[], title: string): HTMLElement {
+    const content = this.document.createElement('div');
+    const heading = this.document.createElement('strong');
+    heading.textContent = title;
+    content.append(heading);
+    const note = this.document.createElement('p');
+    note.textContent = 'Agrupamento por código municipal; âncora em coordenada de origem. Escolha um bolsista:';
+    content.append(note);
+    for (const ponto of pontos) {
+      const button = this.document.createElement('button');
+      button.type = 'button';
+      button.textContent = ponto.nome;
+      button.style.display = 'block';
+      button.addEventListener('click', () => this.callbacks.pontoSelected(ponto));
+      content.append(button);
+      const origin = this.document.createElement('small');
+      origin.textContent = this.origem(ponto);
+      content.append(origin);
+    }
+    return content;
   }
 
   private popup(ponto: PontoMapa): HTMLElement {
@@ -413,4 +516,21 @@ export class LeafletMapSession {
     group.eachLayer((layer) => { layer.off(); layer.unbindPopup(); layer.unbindTooltip(); });
     group.clearLayers();
   }
+}
+
+function sameLayerState(a: MapaState, b: MapaState): boolean {
+  return a.pontos === b.pontos
+    && a.vinculos === b.vinculos
+    && a.selectedTutorId === b.selectedTutorId
+    && a.show50Km === b.show50Km
+    && a.show100Km === b.show100Km
+    && a.showTutors === b.showTutors
+    && a.showFellows === b.showFellows
+    && a.showLinks === b.showLinks
+    && a.alertsOnly === b.alertsOnly
+    && a.unallocatedOnly === b.unallocatedOnly;
+}
+
+function samePoints(a: readonly PontoMapa[], b: readonly PontoMapa[]): boolean {
+  return a.length === b.length && a.every((point, index) => point === b[index]);
 }

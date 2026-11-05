@@ -61,6 +61,32 @@ describe('calculateDashboardStatistics', () => {
     });
   });
 
+  it('uses the nearest distance for both inclusive geodesic thresholds', () => {
+    const tutor = participant('tutor-1', 'tutor', 0);
+    const fellows = [0, 50, 50.01, 100, 100.01].map((distanceKm, index) =>
+      participant(`fellow-${index + 1}`, 'fellow', (distanceKm / 6_371.0088) * (180 / Math.PI)),
+    );
+
+    const statistics = calculateDashboardStatistics([tutor, ...fellows], []);
+
+    expect(statistics.geodesicWithin50Count).toBe(2);
+    expect(statistics.geodesicWithin100Count).toBe(4);
+    expect(statistics.averageNearestStraightLineKm).toBeCloseTo(60.004, 6);
+  });
+
+  it('does not count fellows without coordinates or when no tutor has coordinates', () => {
+    const tutor = participant('tutor-1', 'tutor', null);
+    const locatedFellow = participant('fellow-1', 'fellow', 0);
+    const unlocatedFellow = participant('fellow-2', 'fellow', null);
+
+    const statistics = calculateDashboardStatistics([tutor, locatedFellow, unlocatedFellow], []);
+
+    expect(statistics.locatedFellowCount).toBe(1);
+    expect(statistics.geodesicWithin50Count).toBe(0);
+    expect(statistics.geodesicWithin100Count).toBe(0);
+    expect(statistics.averageNearestStraightLineKm).toBeNull();
+  });
+
   it('ignores invalid distances reported with a success status', () => {
     const tutor = participant('tutor-1', 'tutor', 0);
     const fellow = participant('fellow-1', 'fellow', 0.1);

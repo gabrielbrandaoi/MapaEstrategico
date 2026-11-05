@@ -1,6 +1,7 @@
 <section class="map-frame" aria-label="Mapa estratégico do Brasil">
   <div class="map-actions">
     <button type="button" (click)="verBrasil()">Ver Brasil</button>
+    <button type="button" (click)="ajustarAosPontos()">Ajustar aos pontos</button>
     <button type="button" [attr.aria-expanded]="legendaAberta()" (click)="legendaAberta.set(!legendaAberta())">
       {{ legendaAberta() ? 'Ocultar legenda' : 'Mostrar legenda' }}
     </button>

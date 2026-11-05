@@ -2,9 +2,10 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Component, input, output } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { of, Subject, throwError } from 'rxjs';
-import { ImportBatch, RoadRoute } from './domain/models';
+import { ImportBatch, Participant, ProximityPair, RoadRoute } from './domain/models';
 import { CenarioMapa, PontoMapa, VinculoMapa } from './domain/mapa.models';
-import { App } from './app';
+import { App, pageWindow } from './app';
+import { ReportExportService } from './reports/report-export.service';
 import { ExcelWorkbookService } from './importing/excel-workbook.service';
 import { MapProjectionService } from './geolocation/map-projection.service';
 import { LeafletMapComponent } from './map/leaflet-map.component';
@@ -603,6 +604,275 @@ describe('App', () => {
     fixture.detectChanges();
     expect(pending.observed).toBe(false);
     expect(root.querySelector('.route-consent')).toBeNull();
+  });
+
+  describe('paginação das tabelas extensas', () => {
+    /** 1 tutor + N bolsistas a poucos km: N pares e N + 1 participantes, todos com coordenadas. */
+    function coordinateRows(fellows: number): (string | number)[][] {
+      return [
+        ['Tipo', 'Nome', 'Latitude', 'Longitude'],
+        ['Tutor', 'Tutor sintético', -20, -40],
+        ...Array.from({ length: fellows }, (_, index) => [
+          'Bolsista',
+          `Bolsista sintético ${String(index).padStart(3, '0')}`,
+          -20 - (index + 1) / 10_000,
+          -40,
+        ]),
+      ];
+    }
+
+    async function importCoordinates(fixture: ComponentFixture<App>, fellows: number) {
+      vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue({
+        fileName: 'coordenadas-sinteticas.csv',
+        sheets: [{ name: 'Dados', rows: coordinateRows(fellows) }],
+      });
+      await importWorkbook(fixture, 'coordenadas-sinteticas.csv');
+    }
+
+    function rowTexts(root: HTMLElement, selector: string): string[] {
+      return [...root.querySelectorAll<HTMLElement>(`${selector} tbody tr`)].map(
+        (row) => row.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+      );
+    }
+
+    function pagerButton(root: HTMLElement, navLabel: string, label: string): HTMLButtonElement {
+      const nav = root.querySelector(`nav[aria-label="Paginação: ${navLabel}"]`);
+      const button = [...(nav?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+        (item) => item.textContent?.trim() === label,
+      );
+      if (!button) throw new Error(`Botão ${label} ausente em ${navLabel}.`);
+      return button;
+    }
+
+    function pagerStatus(root: HTMLElement, navLabel: string): string {
+      return (
+        root
+          .querySelector(`nav[aria-label="Paginação: ${navLabel}"] [role=status]`)
+          ?.textContent?.replace(/\s+/g, ' ')
+          .trim() ?? ''
+      );
+    }
+
+    it('limits the window to the available total (clamp) and covers boundaries', () => {
+      expect(pageWindow(0, 3)).toEqual({ page: 0, pageCount: 1, start: 0, end: 0, total: 0 });
+      expect(pageWindow(100, 1)).toEqual({ page: 0, pageCount: 1, start: 0, end: 100, total: 100 });
+      expect(pageWindow(101, 1)).toEqual({ page: 1, pageCount: 2, start: 100, end: 101, total: 101 });
+      expect(pageWindow(250, 9)).toEqual({ page: 2, pageCount: 3, start: 200, end: 250, total: 250 });
+      expect(pageWindow(250, -4).page).toBe(0);
+    });
+
+    it('pages proximity pairs without losing rows and exports the full filtered set', async () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await importCoordinates(fixture, 150);
+      const root: HTMLElement = fixture.nativeElement;
+      navButton(root, 'Relações e rotas').click();
+      fixture.detectChanges();
+
+      const firstPage = rowTexts(root, '.route-panel .relations-table');
+      expect(firstPage).toHaveLength(100);
+      expect(pagerStatus(root, 'pares tutor–bolsista')).toBe(
+        'Exibindo 1–100 de 150 pares · página 1 de 2',
+      );
+      expect(root.querySelector('.route-panel')?.textContent).toContain('150 pares dentro');
+      const previous = pagerButton(root, 'pares tutor–bolsista', 'Anterior');
+      expect(previous.getAttribute('aria-disabled')).toBe('true');
+
+      const next = pagerButton(root, 'pares tutor–bolsista', 'Próxima');
+      next.focus();
+      next.click();
+      fixture.detectChanges();
+      const secondPage = rowTexts(root, '.route-panel .relations-table');
+      expect(secondPage).toHaveLength(50);
+      expect(pagerStatus(root, 'pares tutor–bolsista')).toBe(
+        'Exibindo 101–150 de 150 pares · página 2 de 2',
+      );
+      // Botão no limite fica aria-disabled (não "disabled"), preservando o foco do teclado.
+      expect(next.getAttribute('aria-disabled')).toBe('true');
+      expect(next.disabled).toBe(false);
+      expect(document.activeElement === next || !root.isConnected).toBe(true);
+      next.click();
+      fixture.detectChanges();
+      expect(pagerStatus(root, 'pares tutor–bolsista')).toContain('página 2 de 2');
+
+      // Unicidade e cobertura: as duas páginas somam todos os pares, sem repetição.
+      const names = [...firstPage, ...secondPage].map((text) => /Bolsista sintético \d{3}/.exec(text)?.[0]);
+      expect(new Set(names).size).toBe(150);
+      expect(names.every((name) => name !== undefined)).toBe(true);
+
+      const exportCsv = vi
+        .spyOn(TestBed.inject(ReportExportService), 'exportCsv')
+        .mockImplementation(() => undefined);
+      [...root.querySelectorAll<HTMLButtonElement>('.page-heading button')]
+        .find((button) => button.textContent?.includes('Exportar CSV'))
+        ?.click();
+      const exported = exportCsv.mock.calls[0]?.[0] ?? [];
+      expect(exported).toHaveLength(150);
+      expect(new Set(exported.map(({ fellow }) => fellow.id)).size).toBe(150);
+      // Ordem do export = ordem completa exibida (linha reta crescente), não só a página.
+      const distances = exported.map(({ pair }) => pair.straightLineKm);
+      expect(distances).toEqual([...distances].sort((left, right) => left - right));
+    });
+
+    it('resets the pairs page when filtering and clamps when the list shrinks', async () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await importCoordinates(fixture, 150);
+      const root: HTMLElement = fixture.nativeElement;
+      navButton(root, 'Relações e rotas').click();
+      fixture.detectChanges();
+      pagerButton(root, 'pares tutor–bolsista', 'Última').click();
+      fixture.detectChanges();
+      expect(pagerStatus(root, 'pares tutor–bolsista')).toContain('página 2 de 2');
+
+      const statusFilter = [...root.querySelectorAll<HTMLSelectElement>('.table-filters select')][1];
+      if (!statusFilter) throw new Error('Filtro de status ausente.');
+      statusFilter.value = 'not-calculated';
+      statusFilter.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+      expect(pagerStatus(root, 'pares tutor–bolsista')).toContain('página 1 de 2');
+
+      // Volta à última página e restringe a pesquisa: a página efetiva é limitada ao total.
+      pagerButton(root, 'pares tutor–bolsista', 'Última').click();
+      fixture.detectChanges();
+      navButton(root, 'Visão geral').click();
+      fixture.detectChanges();
+      const search = root.querySelector<HTMLInputElement>('.page-heading input[type=search]');
+      if (!search) throw new Error('Pesquisa ausente.');
+      search.value = 'Bolsista sintético 00';
+      search.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      navButton(root, 'Relações e rotas').click();
+      fixture.detectChanges();
+      expect(rowTexts(root, '.route-panel .relations-table')).toHaveLength(10);
+      expect(root.querySelector('nav[aria-label="Paginação: pares tutor–bolsista"]')).toBeNull();
+    });
+
+    it('pages participants, resets on filter and returns to page 1 on a new import', async () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await importCoordinates(fixture, 150);
+      const root: HTMLElement = fixture.nativeElement;
+      expect(rowTexts(root, '.people-panel')).toHaveLength(100);
+      expect(pagerStatus(root, 'participantes')).toBe(
+        'Exibindo 1–100 de 151 participantes · página 1 de 2',
+      );
+      expect(root.querySelector('.people-panel')?.textContent).toContain(
+        '151 de 151 registros',
+      );
+      pagerButton(root, 'participantes', 'Próxima').click();
+      fixture.detectChanges();
+      expect(rowTexts(root, '.people-panel')).toHaveLength(51);
+
+      const tutorsToggle = root.querySelector<HTMLInputElement>('.filter-controls input');
+      if (!tutorsToggle) throw new Error('Filtro de tutores ausente.');
+      tutorsToggle.checked = false;
+      tutorsToggle.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+      expect(pagerStatus(root, 'participantes')).toBe(
+        'Exibindo 1–100 de 150 participantes · página 1 de 2',
+      );
+      tutorsToggle.checked = true;
+      tutorsToggle.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      pagerButton(root, 'participantes', 'Próxima').click();
+      fixture.detectChanges();
+      await importCoordinates(fixture, 150);
+      // CSV simples acumula cadastros: 302 participantes, de volta à primeira página.
+      expect(pagerStatus(root, 'participantes')).toBe(
+        'Exibindo 1–100 de 302 participantes · página 1 de 4',
+      );
+    });
+
+    it('pages imported relationships and exports every filtered relationship', async () => {
+      const rows: (string | number)[][] = [
+        ['CPF_TUTOR', 'NOME_TUTOR', 'IBGE_TUTOR', 'CPF_bolsista', 'NOME_bolsista', 'km'],
+        ...Array.from({ length: 120 }, (_, index) => [
+          '00000000001',
+          'Tutor sintético',
+          999999,
+          String(10_000 + index).padStart(11, '0'),
+          `Bolsista sintético ${String(index).padStart(3, '0')}`,
+          String(index + 1),
+        ]),
+      ];
+      vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue({
+        fileName: 'vinculos-extensos.xlsx',
+        sheets: [{ name: 'Nominal', rows }],
+      });
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await importWorkbook(fixture, 'vinculos-extensos.xlsx');
+      const root: HTMLElement = fixture.nativeElement;
+      expect(rowTexts(root, '.imported-relations-table')).toHaveLength(100);
+      expect(pagerStatus(root, 'vínculos informados')).toBe(
+        'Exibindo 1–100 de 120 vínculos · página 1 de 2',
+      );
+      pagerButton(root, 'vínculos informados', 'Próxima').click();
+      fixture.detectChanges();
+      expect(rowTexts(root, '.imported-relations-table')).toHaveLength(20);
+
+      const exportRelationships = vi
+        .spyOn(TestBed.inject(ReportExportService), 'exportImportedRelationships')
+        .mockResolvedValue();
+      [...root.querySelectorAll<HTMLButtonElement>('button')]
+        .find((button) => button.textContent?.includes('Exportar vínculos CSV'))
+        ?.click();
+      const exported = exportRelationships.mock.calls[0]?.[0] ?? [];
+      expect(exported).toHaveLength(120);
+      expect(new Set(exported.map(({ fellow }) => fellow.id)).size).toBe(120);
+    });
+
+    it('applies a route without recomputing pair geometry or the participant index', async () => {
+      const success: RoadRoute = {
+        status: 'success',
+        distanceMeters: 12_300,
+        durationSeconds: 900,
+        provider: 'Roteador sintético',
+        calculatedAt: '2026-01-01T00:00:00.000Z',
+        profile: 'driving',
+        message: null,
+      };
+      TestBed.overrideProvider(ROUTING_PROVIDER, { useValue: { route: () => of(success) } });
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      await importCoordinates(fixture, 3);
+      const internals = fixture.componentInstance as unknown as {
+        proximityGeometry: () => readonly ProximityPair[];
+        participantsById: () => ReadonlyMap<string, Participant>;
+        allProximityPairs: () => readonly ProximityPair[];
+      };
+      const geometry = internals.proximityGeometry();
+      const index = internals.participantsById();
+      expect(geometry).toHaveLength(3);
+      // Sem rotas, nenhuma cópia: a lista exibida é a própria geometria.
+      expect(internals.allProximityPairs()).toBe(geometry);
+
+      const root: HTMLElement = fixture.nativeElement;
+      navButton(root, 'Relações e rotas').click();
+      fixture.detectChanges();
+      const consent = root.querySelector<HTMLInputElement>('.route-consent input');
+      if (!consent) throw new Error('Consentimento ausente.');
+      consent.checked = true;
+      consent.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+      [...root.querySelectorAll<HTMLButtonElement>('.relations-table button')]
+        .find((button) => button.textContent?.includes('Calcular rota'))
+        ?.click();
+      fixture.detectChanges();
+
+      expect(internals.proximityGeometry()).toBe(geometry);
+      expect(internals.participantsById()).toBe(index);
+      const withRoutes = internals.allProximityPairs();
+      const routed = withRoutes.filter((pair) => pair.route !== null);
+      expect(routed).toHaveLength(1);
+      // Pares sem rota mantêm a referência da geometria; só o par roteado é um objeto novo.
+      expect(withRoutes.filter((pair, index) => pair === geometry[index])).toHaveLength(2);
+      expect(geometry.every((pair) => pair.route === null)).toBe(true);
+      expect(routed[0]?.route?.distanceMeters).toBe(12_300);
+      expect(root.querySelector('.route-panel')?.textContent).toContain('12.3 km');
+    });
   });
 });
 

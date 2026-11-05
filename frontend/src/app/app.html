@@ -859,7 +859,7 @@
                 <h2 id="people-title">Participantes</h2>
                 <p>
                   {{ filteredParticipants().length }} de {{ participants().length }} registros
-                  exibidos
+                  correspondem aos filtros
                 </p>
               </div>
               <div class="filter-controls">
@@ -906,7 +906,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (participant of filteredParticipants(); track participant.id) {
+                  @for (participant of pagedParticipants(); track participant.id) {
                     <tr>
                       <td>
                         <button
@@ -949,6 +949,54 @@
                 </tbody>
               </table>
             </div>
+            @let participantsPageWindow = participantsPage();
+            @if (participantsPageWindow.pageCount > 1) {
+              <nav class="table-pagination" aria-label="Paginação: participantes">
+                <p class="table-pagination__status" role="status">
+                  Exibindo {{ participantsPageWindow.start + 1 }}–{{ participantsPageWindow.end }} de
+                  {{ participantsPageWindow.total }} participantes · página {{ participantsPageWindow.page + 1 }} de
+                  {{ participantsPageWindow.pageCount }}
+                </p>
+                <div class="table-pagination__actions">
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="participantsPageWindow.page === 0 ? 'true' : null"
+                    (click)="goToPage('participants', 0)"
+                  >
+                    Primeira
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="participantsPageWindow.page === 0 ? 'true' : null"
+                    (click)="goToPage('participants', participantsPageWindow.page - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="
+                      participantsPageWindow.page === participantsPageWindow.pageCount - 1 ? 'true' : null
+                    "
+                    (click)="goToPage('participants', participantsPageWindow.page + 1)"
+                  >
+                    Próxima
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="
+                      participantsPageWindow.page === participantsPageWindow.pageCount - 1 ? 'true' : null
+                    "
+                    (click)="goToPage('participants', participantsPageWindow.pageCount - 1)"
+                  >
+                    Última
+                  </button>
+                </div>
+              </nav>
+            }
           </section>
         }
       } @else {
@@ -1033,7 +1081,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (relationship of visibleImportedRelationships(); track $index) {
+                  @for (relationship of pagedImportedRelationships(); track $index) {
                     @let tutor = participantById(relationship.tutorId);
                     @let fellow = participantById(relationship.fellowId);
                     <tr>
@@ -1072,6 +1120,54 @@
                 </tbody>
               </table>
             </div>
+            @let importedRelationshipsPageWindow = importedRelationshipsPage();
+            @if (importedRelationshipsPageWindow.pageCount > 1) {
+              <nav class="table-pagination" aria-label="Paginação: vínculos informados">
+                <p class="table-pagination__status" role="status">
+                  Exibindo {{ importedRelationshipsPageWindow.start + 1 }}–{{ importedRelationshipsPageWindow.end }} de
+                  {{ importedRelationshipsPageWindow.total }} vínculos · página {{ importedRelationshipsPageWindow.page + 1 }} de
+                  {{ importedRelationshipsPageWindow.pageCount }}
+                </p>
+                <div class="table-pagination__actions">
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="importedRelationshipsPageWindow.page === 0 ? 'true' : null"
+                    (click)="goToPage('importedRelationships', 0)"
+                  >
+                    Primeira
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="importedRelationshipsPageWindow.page === 0 ? 'true' : null"
+                    (click)="goToPage('importedRelationships', importedRelationshipsPageWindow.page - 1)"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="
+                      importedRelationshipsPageWindow.page === importedRelationshipsPageWindow.pageCount - 1 ? 'true' : null
+                    "
+                    (click)="goToPage('importedRelationships', importedRelationshipsPageWindow.page + 1)"
+                  >
+                    Próxima
+                  </button>
+                  <button
+                    class="button button--small"
+                    type="button"
+                    [attr.aria-disabled]="
+                      importedRelationshipsPageWindow.page === importedRelationshipsPageWindow.pageCount - 1 ? 'true' : null
+                    "
+                    (click)="goToPage('importedRelationships', importedRelationshipsPageWindow.pageCount - 1)"
+                  >
+                    Última
+                  </button>
+                </div>
+              </nav>
+            }
           </section>
         }
 
@@ -1177,7 +1273,7 @@
                   </thead>
                   <tbody>
                     @for (
-                      pair of visibleProximityPairs();
+                      pair of pagedProximityPairs();
                       track pair.tutorId + ':' + pair.fellowId
                     ) {
                       @let tutor = participantById(pair.tutorId);
@@ -1262,6 +1358,54 @@
                   </tbody>
                 </table>
               </div>
+              @let pairsPageWindow = pairsPage();
+              @if (pairsPageWindow.pageCount > 1) {
+                <nav class="table-pagination" aria-label="Paginação: pares tutor–bolsista">
+                  <p class="table-pagination__status" role="status">
+                    Exibindo {{ pairsPageWindow.start + 1 }}–{{ pairsPageWindow.end }} de
+                    {{ pairsPageWindow.total }} pares · página {{ pairsPageWindow.page + 1 }} de
+                    {{ pairsPageWindow.pageCount }}
+                  </p>
+                  <div class="table-pagination__actions">
+                    <button
+                      class="button button--small"
+                      type="button"
+                      [attr.aria-disabled]="pairsPageWindow.page === 0 ? 'true' : null"
+                      (click)="goToPage('pairs', 0)"
+                    >
+                      Primeira
+                    </button>
+                    <button
+                      class="button button--small"
+                      type="button"
+                      [attr.aria-disabled]="pairsPageWindow.page === 0 ? 'true' : null"
+                      (click)="goToPage('pairs', pairsPageWindow.page - 1)"
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      class="button button--small"
+                      type="button"
+                      [attr.aria-disabled]="
+                        pairsPageWindow.page === pairsPageWindow.pageCount - 1 ? 'true' : null
+                      "
+                      (click)="goToPage('pairs', pairsPageWindow.page + 1)"
+                    >
+                      Próxima
+                    </button>
+                    <button
+                      class="button button--small"
+                      type="button"
+                      [attr.aria-disabled]="
+                        pairsPageWindow.page === pairsPageWindow.pageCount - 1 ? 'true' : null
+                      "
+                      (click)="goToPage('pairs', pairsPageWindow.pageCount - 1)"
+                    >
+                      Última
+                    </button>
+                  </div>
+                </nav>
+              }
             }
             <p class="route-footnote">
               Distância rodoviária e tempo são resultados do OSRM e podem variar ou ficar

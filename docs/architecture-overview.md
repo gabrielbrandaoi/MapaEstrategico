@@ -14,6 +14,17 @@ Aplicação Angular standalone em `frontend/`, sem backend ou banco no MVP. O fl
 
 SheetJS é carregado sob demanda. O mapa permanece disponível sem participantes, com contorno local. Não há Nominatim/geocodificação externa, envio automático de coordenadas, persistência de planilhas ou dados demonstrativos.
 
+As tabelas de participantes, pares e vínculos são paginadas em 100 linhas apenas
+na apresentação; filtros, totais e exportações continuam usando o conjunto
+completo. Um índice derivado por ID evita buscas lineares repetidas. A geometria
+dos pares depende do cadastro, não das respostas de roteamento.
+
+A sessão Leaflet reconcilia marcadores por chave. Zoom e resize atualizam posições
+sem reconstruir os grupos; alteração de dados atualiza ícone, popup e seleção.
+O agrupamento municipal permanece distinto de clustering espacial por zoom.
+Medições, limites e próximos passos estão no
+[relatório de desempenho](performance-report.md).
+
 ## Contratos e métricas
 
 - KPIs são calculados como funções puras em `frontend/src/app/domain/dashboard-metrics.ts`, separados da apresentação Angular.

@@ -7,7 +7,8 @@ import { LeafletMapComponent } from './leaflet-map.component';
 
 function fakeSession(): LeafletMapSession {
   return {
-    render: vi.fn(), resize: vi.fn(), verBrasil: vi.fn(), loadBase: vi.fn(), destroy: vi.fn(),
+    render: vi.fn(), resize: vi.fn(), verBrasil: vi.fn(), ajustarAosPontos: vi.fn(),
+    loadBase: vi.fn(), destroy: vi.fn(),
   } as unknown as LeafletMapSession;
 }
 
@@ -65,5 +66,22 @@ describe('LeafletMapComponent initialization', () => {
     expect(loader).toHaveBeenCalledTimes(2);
     expect(create).toHaveBeenCalledTimes(1);
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('routes the real "Ajustar aos pontos" action to the map session', async () => {
+    loader.mockResolvedValue(L);
+    const session = fakeSession();
+    create.mockReturnValue(session);
+    const fixture = TestBed.createComponent(LeafletMapComponent);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const buttons = fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
+    const button = Array.from(buttons)
+      .find((candidate) => candidate.textContent?.trim() === 'Ajustar aos pontos') as HTMLButtonElement;
+    button.click();
+
+    expect(session.ajustarAosPontos).toHaveBeenCalledOnce();
+    fixture.destroy();
   });
 });

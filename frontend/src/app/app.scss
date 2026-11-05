@@ -287,11 +287,12 @@ h2 {
     border-color 120ms ease;
 }
 
-.button:hover:not(:disabled) {
+.button:hover:not(:disabled):not([aria-disabled='true']) {
   transform: translateY(-1px);
 }
 
-.button:disabled {
+.button:disabled,
+.button[aria-disabled='true'] {
   cursor: not-allowed;
   opacity: 0.48;
 }
@@ -1069,6 +1070,35 @@ h2 {
 .table-scroll {
   width: 100%;
   overflow-x: auto;
+}
+
+.table-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.7rem 1.25rem;
+  border-top: 1px solid #edf0f1;
+  background: #fbfcfc;
+}
+
+.table-pagination__status {
+  margin: 0;
+  color: #6d7a82;
+  font-size: 0.69rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-pagination__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.table-pagination .button:focus-visible {
+  outline: 3px solid rgba(59, 149, 138, 0.35);
+  outline-offset: 2px;
 }
 
 table {

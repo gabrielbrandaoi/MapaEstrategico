@@ -50,6 +50,26 @@ type PairSort = 'straight-line' | 'road-distance';
 type ParticipantSort = 'name' | 'city' | 'type' | 'source-row';
 type GeoStatus = 'idle' | 'loading' | 'ready' | 'error';
 type AppTab = 'overview' | 'relationships';
+type PagedTable = 'participants' | 'pairs' | 'importedRelationships';
+
+/** Linhas renderizadas por página nas tabelas extensas; exportações usam o conjunto completo. */
+export const TABLE_PAGE_SIZE = 100;
+
+export interface TablePageWindow {
+  /** Página efetiva (0-based), já limitada ao total disponível. */
+  readonly page: number;
+  readonly pageCount: number;
+  /** Índice inicial (inclusivo) e final (exclusivo) da fatia exibida. */
+  readonly start: number;
+  readonly end: number;
+  readonly total: number;
+}
+
+const FIRST_PAGES: Readonly<Record<PagedTable, number>> = {
+  participants: 0,
+  pairs: 0,
+  importedRelationships: 0,
+};
 
 const TAB_HEADING_IDS: Record<AppTab, string> = {
   overview: 'overview-title',
@@ -137,6 +157,8 @@ export class App {
   protected readonly fileError = signal<string | null>(null);
   protected readonly operationError = signal<string | null>(null);
   private readonly mappingRevision = signal(0);
+  /** Página solicitada por tabela; a página efetiva é limitada em `*Page` (clamp). */
+  private readonly requestedPages = signal<Readonly<Record<PagedTable, number>>>(FIRST_PAGES);
 
   protected readonly mappingForm = new FormGroup<MappingControls>({
     type: new FormControl('', { nonNullable: true }),
@@ -349,12 +371,30 @@ export class App {
     };
   });
 
-  protected readonly allProximityPairs = computed(() => {
+  /** Índice por ID, recalculado apenas quando o cadastro muda. */
+  private readonly participantsById = computed(
+    () =>
+      new Map(this.participants().map((participant) => [participant.id, participant] as const)),
+  );
+
+  /**
+   * Geometria dos pares (haversine + ordenação) depende só do cadastro; atualizar uma rota
+   * não deve refazer este cálculo.
+   */
+  private readonly proximityGeometry = computed(() => buildProximityPairs(this.participants()));
+
+  /**
+   * Pares com rota aplicada. A geometria já traz `route: null`; sem rota, a referência do par é
+   * reutilizada para não duplicar objetos em cargas grandes. Só pares roteados geram novo objeto.
+   */
+  protected readonly allProximityPairs = computed<readonly ProximityPair[]>(() => {
     const routes = this.routesByPair();
-    return buildProximityPairs(this.participants()).map((pair) => ({
-      ...pair,
-      route: routes.get(pairKey(pair)) ?? null,
-    }));
+    const geometry = this.proximityGeometry();
+    if (routes.size === 0) return geometry;
+    return geometry.map((pair) => {
+      const route = routes.get(pairKey(pair));
+      return route ? { ...pair, route } : pair;
+    });
   });
 
   protected readonly visibleProximityPairs = computed(() => {
@@ -391,6 +431,33 @@ export class App {
       }
       return left.straightLineKm - right.straightLineKm;
     });
+  });
+
+  protected readonly participantsPage = computed(() =>
+    pageWindow(this.filteredParticipants().length, this.requestedPages().participants),
+  );
+  protected readonly pagedParticipants = computed(() => {
+    const { start, end } = this.participantsPage();
+    return this.filteredParticipants().slice(start, end);
+  });
+
+  protected readonly pairsPage = computed(() =>
+    pageWindow(this.visibleProximityPairs().length, this.requestedPages().pairs),
+  );
+  protected readonly pagedProximityPairs = computed(() => {
+    const { start, end } = this.pairsPage();
+    return this.visibleProximityPairs().slice(start, end);
+  });
+
+  protected readonly importedRelationshipsPage = computed(() =>
+    pageWindow(
+      this.visibleImportedRelationships().length,
+      this.requestedPages().importedRelationships,
+    ),
+  );
+  protected readonly pagedImportedRelationships = computed(() => {
+    const { start, end } = this.importedRelationshipsPage();
+    return this.visibleImportedRelationships().slice(start, end);
   });
 
   protected readonly statistics = computed(() =>
@@ -553,6 +620,7 @@ export class App {
       ]);
       this.alertasImportados.update((alertas) => [...alertas, ...resultado.dados.alertas]);
       this.activeTab.set(this.workbookMode() ? 'relationships' : 'overview');
+      this.resetPages();
       this.parsedWorkbook.set(null);
       this.selectedSheetName.set('');
       this.headerRowIndex.set(-1);
@@ -632,14 +700,17 @@ export class App {
 
   protected onSearchChanged(event: Event): void {
     this.searchText.set(inputValue(event));
+    this.resetPages();
   }
 
   protected onTutorFilterChanged(event: Event): void {
     this.tutorFilter.set(inputChecked(event));
+    this.resetPages('participants');
   }
 
   protected onFellowFilterChanged(event: Event): void {
     this.fellowFilter.set(inputChecked(event));
+    this.resetPages('participants');
   }
 
   protected onTilesConsentChanged(event: Event): void {
@@ -668,6 +739,7 @@ export class App {
       value === 'error'
     ) {
       this.roadFilter.set(value);
+      this.resetPages('pairs');
     }
   }
 
@@ -675,6 +747,7 @@ export class App {
     const value = inputValue(event);
     if (value === 'straight-line' || value === 'road-distance') {
       this.pairSort.set(value);
+      this.resetPages('pairs');
     }
   }
 
@@ -682,7 +755,17 @@ export class App {
     const value = inputValue(event);
     if (value === 'name' || value === 'city' || value === 'type' || value === 'source-row') {
       this.participantSort.set(value);
+      this.resetPages('participants');
     }
+  }
+
+  /** Navega para a página solicitada; valores fora do intervalo são ignorados. */
+  protected goToPage(table: PagedTable, page: number): void {
+    const current = this.pageWindowOf(table);
+    if (!Number.isInteger(page) || page < 0 || page >= current.pageCount || page === current.page) {
+      return;
+    }
+    this.requestedPages.update((pages) => ({ ...pages, [table]: page }));
   }
 
   protected selectParticipant(participant: Participant): void {
@@ -805,7 +888,7 @@ export class App {
   }
 
   protected participantById(id: string): Participant | undefined {
-    return this.participants().find((participant) => participant.id === id);
+    return this.participantsById().get(id);
   }
 
   protected routeStatusLabel(route: RoadRoute | null): string {
@@ -958,6 +1041,25 @@ export class App {
     this.selectedParticipantId.set(null);
     this.selectedTutorId.set(null);
     this.routeConsent.set(false);
+    this.resetPages();
+  }
+
+  /** Volta à primeira página (todas as tabelas ou apenas a indicada). */
+  private resetPages(table?: PagedTable): void {
+    this.requestedPages.update((pages) =>
+      table === undefined ? FIRST_PAGES : { ...pages, [table]: 0 },
+    );
+  }
+
+  private pageWindowOf(table: PagedTable): TablePageWindow {
+    switch (table) {
+      case 'participants':
+        return this.participantsPage();
+      case 'pairs':
+        return this.pairsPage();
+      case 'importedRelationships':
+        return this.importedRelationshipsPage();
+    }
   }
 
   private applyPreparation(preparacao: PreparacaoMapeamento): void {
@@ -998,6 +1100,18 @@ function applyProjectedLocations(
       },
     };
   });
+}
+
+/** Janela de página limitada ao total: filtros que reduzem a lista nunca deixam página vazia. */
+export function pageWindow(
+  total: number,
+  requestedPage: number,
+  pageSize = TABLE_PAGE_SIZE,
+): TablePageWindow {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(0, Math.trunc(requestedPage)), pageCount - 1);
+  const start = page * pageSize;
+  return { page, pageCount, start, end: Math.min(start + pageSize, total), total };
 }
 
 function toRoutingLocation(coordenada: Coordenada): Location {

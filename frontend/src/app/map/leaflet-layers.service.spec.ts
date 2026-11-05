@@ -120,11 +120,20 @@ function fakeLeaflet() {
   function layer() {
     const events = new Map<string, () => void>();
     const result = {
-      events, off: vi.fn(() => result),
+      events, options: {} as L.MarkerOptions,
+      off: vi.fn((name?: string) => {
+        if (name) events.delete(name);
+        else events.clear();
+        return result;
+      }),
       on: vi.fn((name: string, callback: () => void) => { events.set(name, callback); return result; }),
       remove: vi.fn(() => result), unbindPopup: vi.fn(() => result), unbindTooltip: vi.fn(() => result),
       bindPopup: vi.fn((_content: HTMLElement) => result),
       bindTooltip: vi.fn((_content: HTMLElement) => result),
+      setLatLng: vi.fn((_position: L.LatLngTuple) => result),
+      setIcon: vi.fn((_icon: L.Icon) => result),
+      setZIndexOffset: vi.fn((_offset: number) => result),
+      getElement: vi.fn(() => undefined),
       addTo: vi.fn((target: { addLayer?: (item: unknown) => void }) => { target.addLayer?.(result); return result; }),
     };
     return result;
@@ -135,17 +144,24 @@ function fakeLeaflet() {
       ...layer(), items,
       addTo: vi.fn(() => result),
       addLayer: (item: ReturnType<typeof layer>) => items.push(item),
+      removeLayer: vi.fn((item: ReturnType<typeof layer>) => {
+        const index = items.indexOf(item);
+        if (index >= 0) items.splice(index, 1);
+        return result;
+      }),
       eachLayer: (fn: (item: ReturnType<typeof layer>) => void) => items.forEach(fn),
       clearLayers: vi.fn(() => { items.length = 0; }),
     };
     return result;
   }
+  const zoom = { scale: 1 };
   const map = {
     ...layer(), attributionControl: { addAttribution: vi.fn() },
-    setMinZoom: vi.fn(), getZoom: () => 4,
+    setMinZoom: vi.fn(), getZoom: vi.fn(() => 4),
     getBoundsZoom: vi.fn(() => 3.2), fitBounds: vi.fn(), invalidateSize: vi.fn(),
-    project: (value: [number, number]) => ({ x: value[1], y: value[0] }),
-    unproject: (value: { x: number; y: number }) => ({ lng: value.x, lat: value.y }),
+    project: (value: [number, number]) => ({ x: value[1] * zoom.scale, y: value[0] * zoom.scale }),
+    unproject: (value: { x: number; y: number }) =>
+      ({ lng: value.x / zoom.scale, lat: value.y / zoom.scale }),
   };
   const groups = Array.from({ length: 4 }, group);
   let groupIndex = 0;
@@ -159,7 +175,7 @@ function fakeLeaflet() {
     polyline: vi.fn(() => layer()), divIcon: vi.fn((options: unknown) => options),
     geoJSON: vi.fn(() => layer()), tileLayer: vi.fn(() => layer()),
   };
-  return { api, map, groups };
+  return { api, map, groups, zoom };
 }
 
 function state(patch: Partial<MapaState> = {}): MapaState {
@@ -228,6 +244,119 @@ describe('sessão Leaflet: lifecycle e camadas', () => {
     expect(map.setMinZoom).toHaveBeenLastCalledWith(-0.4);
     session.destroy();
   });
+  it('reposiciona offsets em pixels no zoom sem recriar marcadores ou popups', () => {
+    const { api, map, zoom, session } = setup();
+    const pontos = [ponto('t', { tipo: 'tutor' }), ponto('b')];
+    session.render(state({ pontos }));
+    expect(api.marker).toHaveBeenCalledTimes(2);
+    const markers = api.marker.mock.results.map(({ value }) => value);
+    const popupCalls = markers.map((marker) => marker.bindPopup.mock.calls.length);
+
+    zoom.scale = 2;
+    map.events.get('zoomend')?.();
+
+    expect(api.marker).toHaveBeenCalledTimes(2);
+    markers.forEach((marker) => expect(marker.setLatLng).toHaveBeenCalledOnce());
+    const positions = markers.map((marker) => marker.setLatLng.mock.calls.at(-1)?.[0]);
+    const delta = Math.hypot(
+      (positions[0]![0] - positions[1]![0]) * zoom.scale,
+      (positions[0]![1] - positions[1]![1]) * zoom.scale,
+    );
+    expect(delta).toBeCloseTo(44, 5);
+    expect(markers.map((marker) => marker.bindPopup.mock.calls.length)).toEqual(popupCalls);
+    session.destroy();
+  });
+  it('reconcilia seleção por identidade e mantém os marcadores que não mudaram', () => {
+    const { api, session, groups } = setup();
+    const pontos = [
+      ponto('t1', { tipo: 'tutor', coordenada: coord(-23, -46) }),
+      ponto('t2', { tipo: 'tutor', coordenada: coord(-22, -45) }),
+      ponto('t3', { tipo: 'tutor', coordenada: coord(-21, -44) }),
+    ];
+    session.render(state({ pontos, showFellows: false }));
+    const original = api.marker.mock.results.map(({ value }) => value);
+    const creations = api.marker.mock.calls.length;
+
+    session.render(state({ pontos, selectedTutorId: 't1', showFellows: false }));
+
+    expect(api.marker).toHaveBeenCalledTimes(creations);
+    expect(groups[3].removeLayer).not.toHaveBeenCalled();
+    expect(original.filter((marker) => marker.setIcon).length).toBe(3);
+    expect(original.reduce((count, marker) => count + marker.setIcon.mock.calls.length, 0)).toBe(1);
+    expect(original.reduce((count, marker) => count + marker.bindPopup.mock.calls.length, 0)).toBe(4);
+    session.destroy();
+  });
+  it('atualiza posição, popup e estilo quando o mesmo ID recebe dados novos', () => {
+    const { api, session } = setup();
+    session.render(state({ pontos: [ponto('t', {
+      tipo: 'tutor', nome: 'Nome anterior', coordenada: coord(-23, -46),
+    })] }));
+    const marker = api.marker.mock.results[0].value;
+    const popupAnterior = marker.bindPopup.mock.calls[0][0] as HTMLElement;
+
+    session.render(state({ pontos: [ponto('t', {
+      tipo: 'tutor', nome: 'Nome atualizado', coordenada: coord(-12, -34),
+      alertas: ['Alerta atualizado'],
+    })] }));
+
+    expect(api.marker).toHaveBeenCalledOnce();
+    expect(marker.setLatLng).toHaveBeenLastCalledWith([-12, -34]);
+    expect(marker.bindPopup).toHaveBeenCalledTimes(2);
+    expect(popupAnterior.textContent).toContain('Nome anterior');
+    expect(marker.bindPopup.mock.calls[1][0].textContent).toContain('Nome atualizado');
+    expect(marker.bindPopup.mock.calls[1][0].textContent).toContain('Alerta atualizado');
+    expect(marker.setIcon).toHaveBeenCalledOnce();
+    session.destroy();
+  });
+  it('mantém os 1.000 marcadores em zoom e seleção sem criar/remover layers inalteradas', () => {
+    const { api, map, zoom, groups, host, session } = setup();
+    const pontos = Array.from({ length: 1_000 }, (_, index) => {
+      const latitude = -30 + (index % 80) * 0.05;
+      const longitude = -60 + Math.floor(index / 80) * 0.05;
+      return index < 100
+        ? ponto(`t${index}`, { tipo: 'tutor', coordenada: coord(latitude, longitude) })
+        : ponto(`b${index}`, {
+          ibge6: String(index).padStart(6, '0'),
+          coordenada: coord(latitude, longitude),
+        });
+    });
+    session.render(state({ pontos }));
+    expect(api.marker).toHaveBeenCalledTimes(1_000);
+    const created = api.marker.mock.calls.length;
+
+    session.render(state({ pontos }));
+    expect(api.marker).toHaveBeenCalledTimes(created);
+    zoom.scale = 1.5;
+    map.events.get('zoomend')?.();
+    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 1_200 });
+    session.resize();
+    expect(api.marker).toHaveBeenCalledTimes(created);
+    session.render(state({ pontos, selectedTutorId: 't0' }));
+
+    expect(api.marker).toHaveBeenCalledTimes(created);
+    expect(groups[3].removeLayer).not.toHaveBeenCalled();
+    expect(api.marker.mock.results.reduce((count, result) =>
+      count + result.value.setIcon.mock.calls.length, 0)).toBe(1);
+    session.destroy();
+  });
+  it('ajusta aos pontos visíveis respeitando camadas e filtros', () => {
+    const { api, map, session } = setup();
+    const pontos = [
+      ponto('t', { tipo: 'tutor', coordenada: coord(-23, -46) }),
+      ponto('b', { coordenada: coord(-3, -60), alertas: ['Alerta sintético'] }),
+      ponto('hidden', { coordenada: coord(-20, -40) }),
+    ];
+    session.render(state({ pontos, showTutors: false, alertsOnly: true }));
+
+    session.ajustarAosPontos();
+
+    expect(map.fitBounds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ coords: [[-3, -60]] }),
+      expect.objectContaining({ maxZoom: MAPA_CONFIG.maxZoom, animate: false }),
+    );
+    expect(api.marker).toHaveBeenCalledOnce();
+    session.destroy();
+  });
   it('renderiza Natal: dois bolsistas selecionados no mesmo centroide como ◆ 2 sem ocultar tutor', () => {
     const { api, session } = setup();
     const original = Object.freeze(coord(-5.79, -35.21));
@@ -255,16 +384,25 @@ describe('sessão Leaflet: lifecycle e camadas', () => {
     session.destroy();
   });
   it('filtra alertas e sem vínculo sem excluir bolsistas não alocados por padrão', () => {
-    const { api, session } = setup();
+    const { api, groups, session } = setup();
     const pontos = [ponto('allocated'), ponto('free', { alertas: ['Alerta sintético'], ibge6: null })];
     session.render(state({ pontos, vinculos: [vinculo({ bolsistaId: 'allocated' })] }));
     expect(api.marker).toHaveBeenCalledTimes(2);
+    const allocatedMarker = api.marker.mock.results
+      .map(({ value }) => value)
+      .find((marker) => !marker.bindPopup.mock.calls[0][0].textContent.includes('sem vínculo'))!;
+    const freeMarker = api.marker.mock.results
+      .map(({ value }) => value)
+      .find((marker) => marker.bindPopup.mock.calls[0][0].textContent.includes('sem vínculo'))!;
     api.marker.mockClear();
     session.render(state({ pontos, vinculos: [vinculo({ bolsistaId: 'allocated' })],
       alertsOnly: true, unallocatedOnly: true }));
-    expect(api.marker).toHaveBeenCalledOnce();
-    const marker = api.marker.mock.results[0].value;
-    expect(marker.bindPopup.mock.calls[0][0].textContent).toContain('sem vínculo');
+    expect(api.marker).not.toHaveBeenCalled();
+    expect(groups[3].removeLayer).toHaveBeenCalledWith(allocatedMarker);
+    expect(groups[3].items).toEqual([freeMarker]);
+    expect(allocatedMarker.events.size).toBe(0);
+    expect(allocatedMarker.unbindPopup).toHaveBeenCalledOnce();
+    expect(freeMarker.bindPopup.mock.calls[0][0].textContent).toContain('sem vínculo');
     session.destroy();
   });
   it('usa DOM/textContent seguro e alterna o tutor no clique sem dados de CPF', () => {
@@ -279,7 +417,8 @@ describe('sessão Leaflet: lifecycle e camadas', () => {
     first.events.get('click')?.();
     expect(callbacks.tutorSelected).toHaveBeenLastCalledWith('t');
     session.render(state({ selectedTutorId: 't', pontos: [ponto('t', { tipo: 'tutor' })] }));
-    api.marker.mock.results[1].value.events.get('click')?.();
+    expect(api.marker).toHaveBeenCalledOnce();
+    first.events.get('click')?.();
     expect(callbacks.tutorSelected).toHaveBeenLastCalledWith(null);
     session.destroy();
   });
@@ -335,5 +474,20 @@ describe('sessão Leaflet: lifecycle e camadas', () => {
     expect(map.fitBounds).toHaveBeenLastCalledWith(expect.objectContaining({ coords: BRASIL_BOUNDS }), expect.anything());
     expect(api.map).toHaveBeenCalledOnce();
     session.destroy();
+  });
+  it('libera popup, listeners e referências de layers ao destruir a sessão', () => {
+    const { api, groups, map, session } = setup();
+    session.render(state({ pontos: [ponto('t', { tipo: 'tutor' })] }));
+    const marker = api.marker.mock.results[0].value;
+    expect(marker.events.size).toBe(1);
+
+    session.destroy();
+    session.render(state({ pontos: [ponto('novo', { tipo: 'tutor' })] }));
+
+    expect(marker.events.size).toBe(0);
+    expect(marker.unbindPopup).toHaveBeenCalledOnce();
+    expect(groups[3].items).toHaveLength(0);
+    expect(api.marker).toHaveBeenCalledOnce();
+    expect(map.off).toHaveBeenCalledOnce();
   });
 });

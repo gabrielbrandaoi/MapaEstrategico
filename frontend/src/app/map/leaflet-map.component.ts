@@ -60,6 +60,10 @@ export class LeafletMapComponent implements AfterViewInit, OnDestroy {
     this.tutorSelected.emit(null);
   }
 
+  ajustarAosPontos(): void {
+    this.session?.ajustarAosPontos();
+  }
+
   tentarBase(): void {
     if (this.session) void this.session.loadBase();
     else void this.inicializar();
