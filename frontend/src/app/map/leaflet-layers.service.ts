@@ -129,7 +129,10 @@ export class LeafletMapSession {
     const old = this.state;
     this.state = state;
     this.updateTiles();
-    if (!old || !sameLayerState(old, state)) this.drawData();
+    if (!old || !sameLayerState(old, state)) {
+      this.dataDrawn = false;
+      this.drawData();
+    }
     const coords = coordenadasSelecao(state.pontos, state.vinculos, state.selectedTutorId);
     const viewportKey = `${state.selectedTutorId ?? ''}:${JSON.stringify(coords)}`;
     if (!old || old.resetKey !== state.resetKey) {

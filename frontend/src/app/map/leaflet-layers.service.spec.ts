@@ -207,6 +207,25 @@ function setup() {
 }
 
 describe('sessão Leaflet: lifecycle e camadas', () => {
+  it('desenha dados recebidos com a aba oculta ao voltar a ficar visível', () => {
+    const { api, host, session } = setup();
+    session.render(state());
+    session.resize();
+    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 0 });
+    session.resize();
+    const pontos = [ponto('t', { tipo: 'tutor' }), ponto('b')];
+    session.render(state({ pontos }));
+    session.render(state({ pontos }));
+    expect(api.marker).not.toHaveBeenCalled();
+
+    Object.defineProperty(host, 'clientWidth', { configurable: true, value: 320 });
+    session.resize();
+
+    expect(api.marker).toHaveBeenCalledTimes(2);
+    session.resize();
+    expect(api.marker).toHaveBeenCalledTimes(2);
+    session.destroy();
+  });
   it('abre Brasil sem pontos; reutiliza mapa/grupos; minzoom é derivado do tamanho', () => {
     const { api, map, session } = setup();
     session.render(state());

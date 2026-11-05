@@ -228,6 +228,20 @@ node scripts\benchmark-dashboard.cjs
 
 ## Fora desta fatia
 
+### Correcao posterior: importacao com mapa oculto
+
+A otimizacao incremental tinha uma regressao: dados recebidos com o container
+oculto eram guardados no estado sem serem desenhados, mas a flag `dataDrawn`
+continuava indicando o desenho anterior como atualizado. Ao voltar a aba,
+`resize` apenas reposicionava marcadores inexistentes ou antigos.
+
+Mudancas de estado das camadas agora invalidam essa flag antes da tentativa
+de desenho, preservando a atualizacao pendente ate o container ficar visivel.
+Regressao reproduzida antes da correcao (esperados 2 marcadores, encontrados 0).
+Depois: **331 testes aprovados e build de producao exit 0**. Validacao em
+pagina separada com workbook sintetico: mapa oculto durante importacao,
+40 marcadores ao voltar e os mesmos 40 apos outra troca de abas, sem erros JS.
+
 - **Indice espacial:** `buildProximityPairs` continua dependendo de tutores x
   bolsistas e da quantidade de pares retornados. Em carga densa, o proprio
   resultado pode ser quadratico; um indice nao elimina o custo de materializa-lo.
