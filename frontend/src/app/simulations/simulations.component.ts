@@ -1,5 +1,5 @@
 import { DecimalPipe } from '@angular/common';
-import { Component, computed, DestroyRef, effect, inject, input, signal, viewChild } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { compareAllocationDistributions } from '../domain/allocation-distribution';
 import type { AllocationResult, AllocationDistributionKey } from '../domain/allocation.models';
 import type { Participant } from '../domain/models';
@@ -34,6 +34,7 @@ export class SimulationsComponent {
   readonly scenarios = input<readonly SimulationScenario[]>([]);
   readonly participants = input<readonly Participant[]>([]);
   readonly loading = input(false);
+  readonly importRequested = output<void>();
   readonly view = signal<SimulationView>('comparison');
   readonly exporting = signal(false);
   readonly exportError = signal<string | null>(null);

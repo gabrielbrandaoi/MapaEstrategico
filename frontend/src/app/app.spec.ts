@@ -42,6 +42,7 @@ class SimulationsStub {
   readonly scenarios = input<readonly SimulationScenario[]>([]);
   readonly participants = input<readonly Participant[]>([]);
   readonly loading = input(false);
+  readonly importRequested = output<void>();
 }
 
 /** Projeção sintética derivada do lote real importado (mesmos IDs, centróide fictício). */
@@ -135,6 +136,60 @@ describe('App', () => {
     await fixture.whenStable();
     fixture.detectChanges();
   }
+
+  it('keeps name and municipality search in the toolbar across map and relationships tabs', async () => {
+    vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue(RELATIONSHIP_WORKBOOK);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
+    const root: HTMLElement = fixture.nativeElement;
+    navButton(root, 'Visão geral').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const search = root.querySelector<HTMLInputElement>('.topbar input[type="search"]');
+    expect(search).not.toBeNull();
+    expect(root.querySelectorAll('input[type="search"]')).toHaveLength(1);
+    expect(root.querySelector('.map-panel #map-scenario')).not.toBeNull();
+    expect(root.querySelectorAll('.map-filter-group legend')).toHaveLength(4);
+    expect(root.querySelector('.detail-panel')).not.toBeNull();
+    search!.value = 'Sem correspondência sintética';
+    search!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(mapStub(fixture).pontos()).toHaveLength(0);
+    expect(root.querySelector('#search-results')?.textContent).toContain('0 participantes na tabela');
+    expect(search?.getAttribute('aria-describedby')).toBe('search-results');
+    const clear = [...root.querySelectorAll<HTMLButtonElement>('.topbar button')]
+      .find((button) => button.textContent?.trim() === 'Limpar pesquisa');
+    expect(clear).toBeDefined();
+    clear?.click();
+    fixture.detectChanges();
+    expect(search?.value).toBe('');
+    expect(root.querySelector('#search-results')).toBeNull();
+    expect(mapStub(fixture).pontos()).toHaveLength(2);
+    search!.value = 'Sem correspondência sintética';
+    search!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    const reset = root.querySelector<HTMLButtonElement>('.table-empty-state button');
+    expect(reset?.textContent).toContain('Limpar filtros');
+    reset?.click();
+    fixture.detectChanges();
+    expect(root.querySelector('.table-empty-state')).toBeNull();
+    search!.value = 'Sem correspondência sintética';
+    search!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    navButton(root, 'Relações e rotas').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector<HTMLInputElement>('.topbar input[type="search"]')?.value)
+      .toBe('Sem correspondência sintética');
+    expect(root.querySelectorAll('input[type="search"]')).toHaveLength(1);
+    expect(root.querySelector('#search-results')?.textContent).toContain('0 pares próximos');
+    navButton(root, 'Simulações').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(root.querySelector('.topbar input[type="search"]')).toBeNull();
+    fixture.destroy();
+  });
 
   it('separates the distribution tab from the map and explicitly selects map scenarios', async () => {
     vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue({
@@ -288,7 +343,31 @@ describe('App', () => {
     expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
   });
 
-  it('brings the overview and its map into view when "Visão geral" is clicked after an import', async () => {
+  it.each(['Visão geral', 'Simulações', 'Relações e rotas'])(
+    'opens the overview after importing Excel from %s',
+    async (tab) => {
+      vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue(RELATIONSHIP_WORKBOOK);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const root: HTMLElement = fixture.nativeElement;
+      navButton(root, tab).click();
+      fixture.detectChanges();
+      await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
+      expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
+      expect(navButton(root, 'Visão geral').getAttribute('aria-current')).toBe('page');
+      expect(mapStub(fixture).pontos()).toHaveLength(2);
+      const sections = [...root.querySelectorAll('.people-panel, .map-workspace, .import-summary')];
+      expect(sections.map((section) => section.classList.contains('people-panel')
+        ? 'participants'
+        : section.classList.contains('map-workspace') ? 'map' : 'import')).toEqual([
+        'participants', 'map', 'import',
+      ]);
+      expect(root.querySelectorAll('.people-panel')).toHaveLength(1);
+      fixture.destroy();
+    },
+  );
+
+  it('brings the overview and its map into view after import and when its tab is clicked', async () => {
     vi.spyOn(TestBed.inject(ExcelWorkbookService), 'read').mockResolvedValue(RELATIONSHIP_WORKBOOK);
     // jsdom does not implement scrollIntoView; record which element the app scrolls to.
     const scrolled: Element[] = [];
@@ -299,21 +378,68 @@ describe('App', () => {
     try {
       const fixture = TestBed.createComponent(App);
       fixture.autoDetectChanges();
-      await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
       const root: HTMLElement = fixture.nativeElement;
       document.body.append(root);
+      for (const [selector, height] of [['.navigation-bar', 60], ['.topbar', 78]] as const) {
+        const bar = root.querySelector<HTMLElement>(selector);
+        if (!bar) throw new Error(`Barra ausente: ${selector}`);
+        bar.style.position = 'sticky';
+        vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 100, height));
+      }
+      const content = root.querySelector<HTMLElement>('.content-wrap');
+      if (!content) throw new Error('Conteúdo ausente.');
+      content.style.rowGap = '16px';
+      await importWorkbook(fixture, 'vinculos-sinteticos.xlsx');
+      const heading = root.querySelector<HTMLElement>('#overview-title');
+      expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
+      expect(scrolled).toContain(heading);
+      expect(document.activeElement).toBe(heading);
+      expect(heading?.style.scrollMarginTop).toBe('154px');
+      navButton(root, 'Relações e rotas').click();
+      await fixture.whenStable();
       expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(true);
-      // Import reports stay above the tab content on both tabs.
+      // The map stays mounted when another tab is active.
       expect(root.querySelector('.map-workspace')?.previousElementSibling).not.toBeNull();
 
       navButton(root, 'Visão geral').click();
       await fixture.whenStable();
 
-      const heading = root.querySelector<HTMLElement>('#overview-title');
+      const restoredHeading = root.querySelector<HTMLElement>('#overview-title');
       expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
-      expect(scrolled).toContain(heading);
-      expect(document.activeElement).toBe(heading);
+      expect(scrolled).toContain(restoredHeading);
+      expect(document.activeElement).toBe(restoredHeading);
       expect(mapStub(fixture).pontos()).toHaveLength(2);
+
+      const mapHeading = root.querySelector<HTMLElement>('#map-title');
+      [...root.querySelectorAll<HTMLButtonElement>('.people-panel button')]
+        .find((button) => button.textContent?.trim() === 'Ir para o mapa')?.click();
+      await fixture.whenStable();
+      expect(document.activeElement).toBe(mapHeading);
+      expect(scrolled).toContain(mapHeading);
+      expect(mapHeading?.style.scrollMarginTop).toBe('154px');
+      expect(root.querySelector('.participant-row--selected')).toBeNull();
+      [...root.querySelectorAll<HTMLButtonElement>('.map-heading-row button')]
+        .find((button) => button.textContent?.trim() === 'Voltar aos participantes')?.click();
+      await fixture.whenStable();
+      expect(document.activeElement).toBe(root.querySelector('#people-title'));
+
+      const personButtons = root.querySelectorAll<HTMLButtonElement>('.table-person-link');
+      personButtons[0].click();
+      await fixture.whenStable();
+      expect(root.querySelectorAll('.participant-row--selected')).toHaveLength(1);
+      expect(personButtons[0].closest('tr')?.classList.contains('participant-row--selected')).toBe(true);
+      expect(personButtons[0].textContent).toContain('Selecionado');
+      expect([...root.querySelectorAll('.detail-section h3')].map((h) => h.textContent))
+        .toEqual(['Identificação', 'Localização', 'Situação']);
+      expect(document.activeElement).toBe(mapHeading);
+      personButtons[1].click();
+      await fixture.whenStable();
+      expect(root.querySelectorAll('.participant-row--selected')).toHaveLength(1);
+      expect(personButtons[0].textContent).not.toContain('Selecionado');
+      expect(personButtons[1].textContent).toContain('Selecionado');
+      mapStub(fixture).tutorSelected.emit(null);
+      fixture.detectChanges();
+      expect(root.querySelector('.participant-row--selected')).toBeNull();
 
       navButton(root, 'Relações e rotas').click();
       await fixture.whenStable();
@@ -400,6 +526,8 @@ describe('App', () => {
     select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     const map = mapStub(fixture);
+    const workspaceClass = root.querySelector('.workspace-grid')?.className;
+    const detailsClass = root.querySelector('.detail-panel')?.className;
     const activeTutor = map.allocation()?.tutors.find((tutor) => tutor.status === 'active');
     const fellow = map.pontos().find((ponto) => ponto.tipo === 'fellow');
     if (!activeTutor || !fellow) throw new Error('Participantes sintéticos ausentes.');
@@ -411,6 +539,8 @@ describe('App', () => {
     expect(root.querySelector('.detail-panel')?.textContent).toContain(fellow.nome);
     expect(root.querySelector('.detail-panel')?.textContent).not.toContain('Simulação mínimo');
     expect(map.selectedTutorId()).toBe(activeTutor.tutorId);
+    expect(root.querySelector('.workspace-grid')?.className).toBe(workspaceClass);
+    expect(root.querySelector('.detail-panel')?.className).toBe(detailsClass);
   });
 
   it('replaces the previous scenario when a new workbook is imported', async () => {
@@ -733,6 +863,9 @@ describe('App', () => {
       ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await fixture.whenStable();
     fixture.detectChanges();
+    expect(root.querySelector<HTMLElement>('.map-workspace')?.hidden).toBe(false);
+    navButton(root, 'Relações e rotas').click();
+    fixture.detectChanges();
     expect(root.querySelectorAll('.imported-relations-table tbody tr')).toHaveLength(1);
     expect(root.querySelector('.imported-relations-table')?.textContent).toContain('52.5');
     expect(root.querySelector('.imported-relations-table')?.textContent).toContain(
@@ -800,6 +933,13 @@ describe('App', () => {
     const alerts = root.querySelector('[aria-labelledby="import-alerts-title"]');
     expect(alerts?.textContent).toContain('Tutor sintético sem bolsista');
     expect(alerts?.textContent).toContain('Identidade provisória');
+    const issues = root.querySelector<HTMLDetailsElement>('.import-summary details');
+    expect(issues).not.toBeNull();
+    expect(issues?.open).toBe(false);
+    expect(issues?.querySelector('summary')?.textContent).toContain('Ver avisos e erros');
+    issues?.querySelector('summary')?.click();
+    expect(issues?.open).toBe(true);
+    expect(issues?.querySelector('.issue-list')?.textContent).toContain('Identidade provisória');
     expect(root.querySelector('.import-detailed-report')).not.toBeNull();
     expect(root.textContent).not.toContain('XXX.000.001-XX');
     expect(root.querySelectorAll('.imported-relations-table tbody tr')).toHaveLength(0);
@@ -985,7 +1125,7 @@ describe('App', () => {
       fixture.detectChanges();
       navButton(root, 'Visão geral').click();
       fixture.detectChanges();
-      const search = root.querySelector<HTMLInputElement>('.page-heading input[type=search]');
+      const search = root.querySelector<HTMLInputElement>('.topbar input[type=search]');
       if (!search) throw new Error('Pesquisa ausente.');
       search.value = 'Bolsista sintético 00';
       search.dispatchEvent(new Event('input'));
@@ -1011,6 +1151,14 @@ describe('App', () => {
       pagerButton(root, 'participantes', 'Próxima').click();
       fixture.detectChanges();
       expect(rowTexts(root, '.people-panel')).toHaveLength(51);
+      const currentPage = pagerStatus(root, 'participantes');
+      [...root.querySelectorAll<HTMLButtonElement>('.people-panel button')]
+        .find((button) => button.textContent?.trim() === 'Ir para o mapa')?.click();
+      fixture.detectChanges();
+      [...root.querySelectorAll<HTMLButtonElement>('.map-heading-row button')]
+        .find((button) => button.textContent?.trim() === 'Voltar aos participantes')?.click();
+      fixture.detectChanges();
+      expect(pagerStatus(root, 'participantes')).toBe(currentPage);
 
       const tutorsToggle = root.querySelector<HTMLInputElement>('.filter-controls input');
       if (!tutorsToggle) throw new Error('Filtro de tutores ausente.');
@@ -1053,6 +1201,8 @@ describe('App', () => {
       fixture.detectChanges();
       await importWorkbook(fixture, 'vinculos-extensos.xlsx');
       const root: HTMLElement = fixture.nativeElement;
+      navButton(root, 'Relações e rotas').click();
+      fixture.detectChanges();
       expect(rowTexts(root, '.imported-relations-table')).toHaveLength(100);
       expect(pagerStatus(root, 'vínculos informados')).toBe(
         'Exibindo 1–100 de 120 vínculos · página 1 de 2',

@@ -82,6 +82,10 @@ describe('SimulationsComponent', () => {
     expect(host.querySelector('app-distribution-chart')).toBeNull();
     expect(host.querySelector('.export-actions')).toBeNull();
     expect(host.querySelector('h1')).toBeNull();
+    const requestImport = vi.fn();
+    component.importRequested.subscribe(requestImport);
+    host.querySelector<HTMLButtonElement>('.empty-state button')?.click();
+    expect(requestImport).toHaveBeenCalledOnce();
   });
 
   it('prioritizes loading and never shows previous results as a fresh success', async () => {

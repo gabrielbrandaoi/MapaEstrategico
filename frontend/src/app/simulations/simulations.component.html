@@ -13,7 +13,12 @@
   @if (data.state === 'loading') {
     <p role="status">Atualizando cenários de simulação…</p>
   } @else if (data.state === 'empty') {
-    <p role="status">Importe participantes para visualizar as simulações.</p>
+    <div class="empty-state panel">
+      <h2>Importe dados para simular distribuições</h2>
+      <p role="status">Importe participantes para visualizar as simulações.</p>
+      <p>XLSX, XLS ou CSV · até 10 MB. Leitura local, sem dados demonstrativos.</p>
+      <button class="button button--primary" type="button" (click)="importRequested.emit()">Importar planilha</button>
+    </div>
   } @else if (data.state === 'error') {
     <p role="alert">{{ data.message }}</p>
   } @else if (data.state === 'success') {

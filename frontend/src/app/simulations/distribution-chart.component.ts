@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import type { Chart, LegendItem, Plugin } from 'chart.js';
 import type { AllocationDistributionKey } from '../domain/allocation.models';
-import { ALLOCATION_PALETTE } from '../map/allocation-palette';
+import { ALLOCATION_PALETTE, resolveCssToken } from '../map/allocation-palette';
 
 export interface DistributionValue {
   readonly minimum: 1 | 2;
@@ -30,7 +30,7 @@ export interface DistributionDisplayRow {
 /** Canvas legend: required so the standalone PNG identifies every series and the zero subtotal. */
 export function distributionLegendItems(minimums: readonly (1 | 2)[]): LegendItem[] {
   const outline = (minimum: 1 | 2): Pick<LegendItem, 'strokeStyle' | 'lineWidth' | 'lineDash'> => ({
-    strokeStyle: '#172b4d',
+    strokeStyle: resolveCssToken('--color-text'),
     lineWidth: 2,
     lineDash: minimum === 2 ? [5, 3] : [],
   });
@@ -63,14 +63,14 @@ export const distributionLabelsPlugin: Plugin<'bar'> = {
     // Opaque background keeps the exported PNG readable outside the page theme.
     const { ctx, width, height } = chart;
     ctx.save();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = resolveCssToken('--color-surface');
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
   },
   afterDatasetsDraw(chart) {
     const { ctx } = chart;
     ctx.save();
-    ctx.font = 'bold 12px sans-serif';
+    ctx.font = `600 ${resolveCssToken('--text-xs')} ${resolveCssToken('--font-mono')}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     chart.data.datasets.forEach((dataset, datasetIndex) => {
@@ -86,7 +86,7 @@ export const distributionLabelsPlugin: Plugin<'bar'> = {
             typeof bounds['x'] === 'number' && typeof bounds['y'] === 'number' &&
             typeof bounds['base'] === 'number' && typeof bounds['width'] === 'number'
           ) {
-            ctx.strokeStyle = '#172b4d';
+            ctx.strokeStyle = resolveCssToken('--color-text');
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 3]);
             ctx.strokeRect(
@@ -96,7 +96,7 @@ export const distributionLabelsPlugin: Plugin<'bar'> = {
             ctx.setLineDash([]);
           }
         }
-        ctx.fillStyle = '#172b4d';
+        ctx.fillStyle = resolveCssToken('--color-text');
         if (typeof position.x === 'number' && typeof position.y === 'number') {
           ctx.fillText(String(value), position.x, position.y - 5);
         }
@@ -210,7 +210,7 @@ export class DistributionChartComponent {
               ? minimum === 1 ? ALLOCATION_PALETTE.minimum1 : ALLOCATION_PALETTE.minimum2
               : bars.map((row) => row.subtotal
                 ? ALLOCATION_PALETTE.unassigned : ALLOCATION_PALETTE.active),
-            borderColor: '#172b4d',
+            borderColor: resolveCssToken('--color-text'),
             // Mínimo 2 is outlined only by the dashed local plugin, never a solid border beneath it.
             borderWidth: minimum === 1 ? 1 : 0,
           })),
@@ -222,26 +222,38 @@ export class DistributionChartComponent {
           animation: false,
           layout: { padding: { top: 24 } },
           scales: {
-            x: { title: { display: true, text: 'Quantidade de bolsistas por tutor' } },
+            x: {
+              title: { display: true, text: 'Quantidade de bolsistas por tutor', color: resolveCssToken('--color-muted') },
+              ticks: { color: resolveCssToken('--color-muted'), font: { family: resolveCssToken('--font-mono') } },
+              grid: { color: resolveCssToken('--color-grid') },
+            },
             y: {
               beginAtZero: true,
-              title: { display: true, text: 'Quantidade de tutores' },
-              ticks: { precision: 0 },
+              title: { display: true, text: 'Quantidade de tutores', color: resolveCssToken('--color-muted') },
+              ticks: { precision: 0, color: resolveCssToken('--color-muted'), font: { family: resolveCssToken('--font-mono') } },
+              grid: { color: resolveCssToken('--color-grid') },
               grace: '15%',
             },
           },
           plugins: {
-            title: { display: true, text: ['Distribuição de tutores', 'por quantidade de bolsistas'] },
+            title: {
+              display: true, text: ['Distribuição de tutores', 'por quantidade de bolsistas'],
+              color: resolveCssToken('--color-text'), font: { family: resolveCssToken('--font-heading') },
+            },
             subtitle: {
               display: true,
               text: ['Barra 0 = subtotal', 'não somar novamente aos estados'],
+              color: resolveCssToken('--color-muted'),
               padding: { bottom: 8 },
             },
             legend: {
               display: true,
               position: 'top',
               onClick: () => undefined,
-              labels: { generateLabels: () => legendItems, boxWidth: 24, color: '#172b4d' },
+              labels: {
+                generateLabels: () => legendItems, boxWidth: 24,
+                color: resolveCssToken('--color-text'), font: { family: resolveCssToken('--font-body') },
+              },
             },
           },
         },

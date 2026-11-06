@@ -1,11 +1,11 @@
 <section class="map-frame" aria-label="Mapa estratégico do Brasil">
-  <div class="map-actions">
-    <button type="button" (click)="verBrasil()">Ver Brasil</button>
-    <button type="button" (click)="ajustarAosPontos()">Ajustar aos pontos</button>
-    <button type="button" [attr.aria-expanded]="legendaAberta()" (click)="legendaAberta.set(!legendaAberta())">
-      {{ legendaAberta() ? 'Ocultar legenda' : 'Mostrar legenda' }}
-    </button>
-  </div>
+    <div class="map-actions" role="group" aria-label="Controles de visualização do mapa">
+      <button type="button" (click)="verBrasil()">Ver Brasil</button>
+      <button type="button" (click)="ajustarAosPontos()">Ajustar aos pontos</button>
+      <button type="button" [attr.aria-expanded]="legendaAberta()" (click)="legendaAberta.set(!legendaAberta())">
+        {{ legendaAberta() ? 'Ocultar legenda' : 'Mostrar legenda' }}
+      </button>
+    </div>
   @if (loading()) {
     <p class="map-status" role="status">Carregando base geográfica local do Brasil…</p>
   }
@@ -14,38 +14,61 @@
       {{ error }} <button type="button" (click)="tentarBase()">Tentar novamente</button>
     </div>
   }
-  <div #mapHost class="map-host" aria-label="Mapa de tutores e bolsistas" tabindex="0"></div>
+  <div class="map-workspace">
+  <div class="map-canvas">
+    <div #mapHost class="map-host" aria-label="Mapa de tutores e bolsistas" [attr.aria-busy]="loading()" tabindex="0"></div>
+    <p class="map-caption">Referências geodésicas ≠ cobertura por estrada</p>
+  </div>
   @if (legendaAberta()) {
-    <aside class="map-legend" aria-label="Legenda do mapa">
+    <aside class="map-legend" aria-label="Legenda do mapa" tabindex="0">
+      <h3>Legenda</h3>
+      <ul class="legend-essentials">
+        <li><span class="legend-symbol legend-symbol--tutor" aria-hidden="true">T</span> Tutor</li>
+        <li><span class="legend-symbol legend-symbol--fellow" aria-hidden="true">●</span> Bolsista / grupo municipal</li>
+        @if (simulation()) {
+          <li><span class="simulation-symbol simulation-symbol--dismissed" [style.background]="allocationPalette.dismissed" aria-hidden="true">T×</span> Tutor dispensado</li>
+          <li><span class="simulation-symbol simulation-symbol--unassigned" [style.background]="allocationPalette.unassigned" aria-hidden="true">○</span> Bolsista sem tutor</li>
+        }
+      </ul>
+      <p>Linhas tracejadas: {{ simulation() ? 'vínculos simulados' : 'vínculos importados' }}, não rotas rodoviárias. Círculos: referências geodésicas.</p>
+      <details class="legend-details">
+        <summary>Ver detalhes da legenda</summary>
       @if (simulation()) {
-        <p><strong>Simulação — mínimo {{ simulationMinimum() }} bolsista(s)/tutor</strong></p>
+        <p class="legend-mode"><strong>Simulação — mínimo {{ simulationMinimum() }} bolsista(s)/tutor</strong></p>
         @if (allocation()) {
           <ul>
             <li><span class="simulation-symbol simulation-symbol--active" [style.background]="allocationPalette.active" aria-hidden="true">T✓</span> Tutor ativo e vínculo simulado: mínimo selecionado ({{ simulationMinimum() }}) atingido, até {{ allocationConfig.maximoPorTutor }} bolsistas.</li>
             <li><span class="simulation-symbol simulation-symbol--dismissed" [style.background]="allocationPalette.dismissed" aria-hidden="true">T×</span> Tutor dispensado: entre os {{ allocationConfig.percentualDispensa * 100 }}% mais distantes do bolsista mais próximo, em distância geodésica; não recebe alocação.</li>
             <li><span class="simulation-symbol simulation-symbol--below" [style.background]="allocationPalette.belowMinimum" aria-hidden="true">T!</span> Tutor abaixo do mínimo: coordenadas ausentes ou alocação insuficiente.</li>
-            <li><span class="simulation-symbol simulation-symbol--fellow" [style.background]="allocationPalette.unassigned" aria-hidden="true">T?</span> Tutor sem estado no resultado da simulação; consulte os detalhes do marcador.</li>
-            <li><span class="simulation-symbol simulation-symbol--fellow" [style.background]="allocationPalette.unassigned" aria-hidden="true">○</span> Bolsista sem tutor: sem coordenadas, sem tutor disponível em até {{ allocationConfig.raioMaxKm }} km geodésicos, vagas esgotadas ou mínimo não completado. Consulte o motivo específico no marcador.</li>
-            <li><span class="legend-symbol" [style.color]="fellowColors.normal" aria-hidden="true">●</span> Bolsistas alocados, agrupados por município; número indica a quantidade.</li>
-            <li><span class="legend-symbol" [style.color]="fellowColors.selected" aria-hidden="true">◆</span> Bolsistas vinculados ao tutor selecionado; a cor destaca a seleção, não outra regra de alocação.</li>
+            <li><span class="simulation-symbol simulation-symbol--unknown simulation-symbol--fellow" [style.background]="allocationPalette.unassigned" aria-hidden="true">T?</span> Tutor sem estado no resultado da simulação; consulte os detalhes do marcador.</li>
+            <li><span class="simulation-symbol simulation-symbol--unassigned simulation-symbol--fellow" [style.background]="allocationPalette.unassigned" aria-hidden="true">○</span> Bolsista sem tutor: sem coordenadas, sem tutor disponível em até {{ allocationConfig.raioMaxKm }} km geodésicos, vagas esgotadas ou mínimo não completado. Consulte o motivo específico no marcador.</li>
+            <li><span class="legend-symbol legend-symbol--fellow" aria-hidden="true">●</span> Bolsistas alocados, agrupados por município; número indica a quantidade.</li>
+            <li><span class="legend-symbol legend-symbol--selected" aria-hidden="true">◆</span> Bolsistas vinculados ao tutor selecionado; o destaque indica seleção, não outra regra de alocação.</li>
           </ul>
           <p>Dispensa calculada sobre {{ allocationConfig.percentualDispensa * 100 }}% da base de tutores com coordenadas válidas, com a quantidade arredondada para cima. Motivos detalhados nos tooltips e detalhes. Sem coordenadas: consulte “Estados e razões” acima.</p>
           <p>Linhas tracejadas = somente vínculos simulados, nunca vínculos importados ou rotas rodoviárias.</p>
           <p>Raio máximo de alocação: {{ allocationConfig.raioMaxKm }} km geodésicos,
-            contorno verde ao selecionar um tutor. Não é alcance rodoviário.</p>
+            contorno ao selecionar um tutor. Não é alcance rodoviário.</p>
         } @else {
           <p role="status">Simulação indisponível: consulte o erro acima. Nenhum vínculo simulado é exibido.</p>
         }
       } @else {
         <ul>
         @for (item of legenda; track item.texto) {
-          <li><span class="legend-symbol" [style.color]="item.cor" aria-hidden="true">{{ item.simbolo }}</span>{{ item.texto }}</li>
+          <li><span class="legend-symbol" [style.color]="item.cor"
+            [class.legend-symbol--tutor]="item.simbolo.startsWith('T')"
+            [class.legend-symbol--fellow]="item.simbolo === '●'"
+            [class.legend-symbol--selected]="item.simbolo === '◆ n'"
+            [class.legend-symbol--unassigned]="item.simbolo === '○'"
+            aria-hidden="true">{{ item.simbolo }}</span>{{ item.texto }}</li>
         }
         </ul>
         <p>Linhas tracejadas = vínculos importados, não rotas rodoviárias. Distâncias de planilha, geodésica e rodoviária são independentes.</p>
       }
-      <p>Círculos de 50/130 km: referências geodésicas, não limite da simulação nem cobertura por estrada. Marcadores coincidentes podem ser deslocados apenas visualmente.</p>
+      <p class="legend-note">Círculos de 50/130 km: referências geodésicas, não limite da simulação nem cobertura por estrada. Marcadores coincidentes podem ser deslocados apenas visualmente.</p>
       <p>Origem e precisão das coordenadas (planilha, geocodificada, manual ou desconhecida) são informadas nos detalhes. Centroides municipais são aproximados e não representam endereço individual.</p>
+      </details>
     </aside>
   }
+  </div>
 </section>

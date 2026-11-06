@@ -6,9 +6,9 @@ import { isPlatformBrowser } from '@angular/common';
 import type { PontoMapa, VinculoMapa } from '../domain/mapa.models';
 import { LeafletLayersService, type LeafletMapSession, type MapaState } from './leaflet-layers.service';
 import { LEAFLET_LOADER } from './leaflet-loader';
-import { MAPA_CONFIG, MAPA_LEGENDA } from './mapa.config';
-import { DEFAULT_ALLOCATION_CONFIG, type AllocationResult } from '../domain/allocation.models';
+import { MAPA_LEGENDA } from './mapa.config';
 import { ALLOCATION_PALETTE } from './allocation-palette';
+import { DEFAULT_ALLOCATION_CONFIG, type AllocationResult } from '../domain/allocation.models';
 
 @Component({
   selector: 'app-leaflet-map',
@@ -41,7 +41,6 @@ export class LeafletMapComponent implements OnDestroy {
   readonly baseError = signal<string | null>(null);
   readonly legendaAberta = signal(true);
   readonly legenda = MAPA_LEGENDA;
-  readonly fellowColors = MAPA_CONFIG.fellow;
   private readonly mapHost = viewChild<ElementRef<HTMLDivElement>>('mapHost');
   private readonly platformId = inject(PLATFORM_ID);
   private readonly layers = inject(LeafletLayersService);

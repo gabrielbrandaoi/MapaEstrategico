@@ -658,7 +658,7 @@ export class App {
         ...resultado.dados.lote.report.participants,
       ]);
       this.alertasImportados.update((alertas) => [...alertas, ...resultado.dados.alertas]);
-      this.activeTab.set(this.workbookMode() ? 'relationships' : 'overview');
+      this.selectTab('overview');
       this.resetPages();
       this.parsedWorkbook.set(null);
       this.selectedSheetName.set('');
@@ -740,6 +740,20 @@ export class App {
 
   protected onSearchChanged(event: Event): void {
     this.searchText.set(inputValue(event));
+    this.resetPages();
+  }
+
+  protected clearSearch(input: HTMLInputElement): void {
+    this.searchText.set('');
+    this.resetPages();
+    input.focus();
+  }
+
+  protected resetViewFilters(): void {
+    this.searchText.set('');
+    this.tutorFilter.set(true);
+    this.fellowFilter.set(true);
+    this.roadFilter.set('all');
     this.resetPages();
   }
 
@@ -826,19 +840,34 @@ export class App {
 
   protected viewOnMap(participant: Participant): void {
     this.selectParticipant(participant);
-    this.selectTab('overview');
+    this.goToMap();
   }
 
-  /**
-   * Import reports render above the tabs and can fill the viewport, so a tab switch
-   * must bring the tab content into view; otherwise the click looks like a no-op.
-   */
-  protected selectTab(tab: AppTab): void {
+  protected goToMap(): void {
+    this.selectTab('overview', 'map-title');
+  }
+
+  protected goToParticipants(): void {
+    this.selectTab('overview', 'people-title');
+  }
+
+  protected selectTab(tab: AppTab, headingId: string = TAB_HEADING_IDS[tab]): void {
     this.activeTab.set(tab);
     afterNextRender(
       () => {
-        const heading = this.document.getElementById(TAB_HEADING_IDS[tab]);
+        const heading = this.document.getElementById(headingId);
         if (!heading) return;
+        const view = this.document.defaultView;
+        const fixedBars = this.document.querySelectorAll<HTMLElement>('.navigation-bar, .topbar');
+        let stickyHeight = 0;
+        for (const bar of fixedBars) {
+          if (view?.getComputedStyle(bar).position === 'sticky') {
+            stickyHeight += bar.getBoundingClientRect().height;
+          }
+        }
+        const content = this.document.querySelector('.content-wrap');
+        const spacing = content && view ? Number.parseFloat(view.getComputedStyle(content).rowGap) : 0;
+        heading.style.scrollMarginTop = `${stickyHeight + (Number.isFinite(spacing) ? spacing : 0)}px`;
         if (typeof heading.scrollIntoView === 'function') {
           heading.scrollIntoView({ block: 'start' });
         }

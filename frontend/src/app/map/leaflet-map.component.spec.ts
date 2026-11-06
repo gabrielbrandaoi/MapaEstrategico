@@ -147,6 +147,11 @@ describe('LeafletMapComponent initialization', () => {
     await settle(fixture);
     const root: HTMLElement = fixture.nativeElement;
     const legend = root.querySelector('.map-legend');
+    expect(legend?.querySelector('.legend-essentials')?.textContent).toContain('Tutor');
+    const details = legend?.querySelector('details');
+    expect(details?.open).toBe(false);
+    details?.querySelector('summary')?.click();
+    expect(details?.open).toBe(true);
     expect(legend?.textContent).toContain('mínimo 2');
     expect(legend?.textContent).toContain('Tutor dispensado');
     expect(legend?.textContent).toContain('Tutor abaixo do mínimo');
@@ -180,8 +185,9 @@ describe('LeafletMapComponent initialization', () => {
 
   it('exports the shared status palette, including minimum-specific chart colors', () => {
     expect(ALLOCATION_PALETTE).toEqual({
-      active: '#166534', dismissed: '#7f1d1d', belowMinimum: '#854d0e',
-      unassigned: '#656575', minimum1: '#174e87', minimum2: '#166534',
+      active: 'var(--color-tutor)', dismissed: 'var(--color-dismissed)',
+      belowMinimum: 'var(--color-accent)', unassigned: 'var(--color-unassigned)',
+      minimum1: 'var(--color-accent)', minimum2: 'var(--color-fellow)',
     });
   });
 });

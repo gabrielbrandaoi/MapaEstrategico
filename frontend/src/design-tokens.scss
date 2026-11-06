@@ -1,0 +1,132 @@
+// Fontes locais, estilo normal e subconjunto latino. Licenças em public/fonts/OFL.txt.
+@font-face {
+  font-family: 'Barlow Semi Condensed';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../public/fonts/barlow-semi-condensed-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Barlow Semi Condensed';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../public/fonts/barlow-semi-condensed-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Barlow Semi Condensed';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../public/fonts/barlow-semi-condensed-latin-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Barlow Semi Condensed';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../public/fonts/barlow-semi-condensed-latin-700-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Source Sans 3';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('../public/fonts/source-sans-3-latin-wght-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../public/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../public/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../public/fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+}
+
+:root {
+  // Paleta editorial: papel, tinta e verde-musgo.
+  --color-bg: #ece5d5;
+  --color-surface: #f3eddf;
+  --color-text: #252525;
+  --color-heading: #293524;
+  --color-muted: #5e6256;
+  --color-border: #d3cab8;
+  // Limites de controles: contraste >= 3:1 sobre papel e superfície.
+  --color-control-border: #7b8270;
+  --color-accent: #3f6212;
+  --color-accent-hover: #304d0e;
+  --color-accent-soft: #e8e8d5;
+  --color-header-bg: var(--color-accent);
+  --color-header-start: #304b24;
+  --color-header-end: #48602c;
+  --header-gradient: linear-gradient(110deg, var(--color-header-start), var(--color-header-bg) 55%, var(--color-header-end));
+  --color-header-text: var(--color-surface);
+  --color-header-active: #f3eddf1a;
+  --color-header-hover: #f3eddf0d;
+
+  // Tutor azul, bolsista verde. Status também exigem texto/ícone, não só cor.
+  --color-tutor: #245a81;
+  --color-fellow: #176c63;
+  --color-dismissed: #625b73;
+  --color-unassigned: #963d68;
+  --color-danger: #a63828;
+  --color-warning: #815713;
+  --color-info: #285f86;
+  --color-success: #3f6212;
+
+  // Border/grid/stripe são decorativos, não indicadores únicos de controles.
+  --color-grid: #ded6c5;
+  --color-stripe: #eae3d4;
+  --color-focus: #3f6212;
+  --color-map-bg: #e1e6dc;
+
+  --font-body: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --font-heading: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace;
+
+  // Escala de espaçamento em múltiplos de 4px (com raiz de 16px).
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 1.75rem;
+  --space-8: 2rem;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-marker: 3px;
+  --layout-width: calc(100% - var(--space-4));
+  --navigation-height: 3.75rem;
+  --map-height: clamp(22rem, 50vh, 35rem);
+
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-page-title: 1.75rem;
+  --font-weight-heading: 700;
+}

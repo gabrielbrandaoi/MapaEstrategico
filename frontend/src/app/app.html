@@ -1,21 +1,13 @@
 <div class="app-shell">
-  <aside class="sidebar" aria-label="Navegação principal">
-    <button class="brand" type="button" (click)="selectTab('overview')">
-      <span class="brand-mark" aria-hidden="true">ME</span>
-      <span>
-        <strong>Mapa Estratégico</strong>
-        <small>Planejamento territorial</small>
-      </span>
-    </button>
-
-    <nav class="primary-nav">
+  <header class="navigation-bar">
+    <button class="brand" type="button" (click)="selectTab('overview')">Mapa Estratégico</button>
+    <nav class="primary-nav" aria-label="Navegação principal">
       <button
         type="button"
         [class.is-active]="activeTab() === 'overview'"
         [attr.aria-current]="activeTab() === 'overview' ? 'page' : null"
         (click)="selectTab('overview')"
       >
-        <span class="nav-icon" aria-hidden="true">◫</span>
         Visão geral
       </button>
       <button
@@ -24,7 +16,6 @@
         [attr.aria-current]="activeTab() === 'simulations' ? 'page' : null"
         (click)="selectTab('simulations')"
       >
-        <span class="nav-icon" aria-hidden="true">⇄</span>
         Simulações
       </button>
       <button
@@ -33,34 +24,54 @@
         [attr.aria-current]="activeTab() === 'relationships' ? 'page' : null"
         (click)="selectTab('relationships')"
       >
-        <span class="nav-icon" aria-hidden="true">⇄</span>
         Relações e rotas
       </button>
     </nav>
 
-    <div class="sidebar-note">
-      <span class="status-dot" aria-hidden="true"></span>
-      <div>
-        <strong>Dados nesta sessão</strong>
-        <p>As planilhas ficam no navegador e não são salvas.</p>
-      </div>
-    </div>
-
-    <div class="sidebar-bottom">
-      <span class="sidebar-monogram" aria-hidden="true">ME</span>
-      <span>Decisão apoiada por dados</span>
-    </div>
-  </aside>
+    <span class="session-label">Dados locais · sessão temporária</span>
+  </header>
 
   <main class="main-content">
     <header class="topbar">
-      <div class="breadcrumbs">
-        <span>Planejamento</span>
-        <span aria-hidden="true">/</span>
-        <strong>{{ activeTab() === 'overview' ? 'Visão geral' : activeTab() === 'simulations' ? 'Simulações' : 'Relações e rotas' }}</strong>
-      </div>
+      @if (participants().length > 0 && activeTab() !== 'simulations') {
+        <div class="search-field topbar-search">
+          <label id="participant-search-label" for="participant-search">Pesquisar por nome ou município</label>
+          <div class="search-input-row">
+          <input
+            #searchInput
+            id="participant-search"
+            type="search"
+            aria-labelledby="participant-search-label"
+            placeholder="Digite um nome ou município"
+            [attr.aria-describedby]="searchText().trim() ? 'search-results' : null"
+            [value]="searchText()"
+            (input)="onSearchChanged($event)"
+          />
+          @if (searchText()) {
+            <button class="button button--small" type="button" (click)="clearSearch(searchInput)">Limpar pesquisa</button>
+          }
+          </div>
+          @if (searchText().trim()) {
+            <span id="search-results" class="search-results" role="status">
+              @if (activeTab() === 'overview') {
+                {{ filteredParticipants().length }}
+                {{ filteredParticipants().length === 1 ? 'participante na tabela' : 'participantes na tabela' }}
+              } @else {
+                {{ visibleProximityPairs().length }}
+                {{ visibleProximityPairs().length === 1 ? 'par próximo' : 'pares próximos' }}
+                @if (importedRelationships().length > 0) {
+                  · {{ visibleImportedRelationships().length }}
+                  {{ visibleImportedRelationships().length === 1 ? 'vínculo importado' : 'vínculos importados' }}
+                }
+              }
+              · filtro aplicado
+            </span>
+          }
+        </div>
+      } @else {
+        <span class="workspace-label">Planilhas de tutores e bolsistas</span>
+      }
       <div class="topbar-actions">
-        <span class="session-label"><span aria-hidden="true">●</span> Sessão local</span>
         <button
           class="button button--primary"
           type="button"
@@ -114,7 +125,6 @@
         <section class="import-panel panel" aria-labelledby="import-title">
           <div class="panel-heading">
             <div>
-              <span class="eyebrow">Importação local</span>
               <h2 id="import-title">Mapeie os dados da planilha</h2>
               <p>
                 Arquivo <strong>{{ workbook.fileName }}</strong
@@ -254,7 +264,6 @@
         >
           <div class="panel-heading">
             <div>
-              <span class="eyebrow">Conferência do arquivo</span>
               <h2 [id]="'workbook-report-' + $index">{{ relatorio.arquivo }}</h2>
               <p>
                 Resultado: {{ relatorio.estado }}. As referências de linha correspondem à planilha
@@ -347,7 +356,6 @@
         <section class="panel import-alerts" aria-labelledby="import-alerts-title">
           <div class="panel-heading">
             <div>
-              <span class="eyebrow">Alertas dos tutores</span>
               <h2 id="import-alerts-title">Tutores que precisam de atenção</h2>
               <p>
                 Tutores sem bolsistas são preservados. Sem coordenadas não podem ser posicionados no
@@ -387,126 +395,135 @@
         </section>
       }
 
-      @for (batch of importBatches(); track $index) {
-        @let report = batch.report;
-        <section
-          class="import-summary panel"
-          [attr.aria-labelledby]="'import-summary-title-' + $index"
-        >
+      @if (activeTab() === 'overview') {
+        <section class="page-heading">
+          <div>
+            <h1 id="overview-title" tabindex="-1">Visão geral</h1>
+            <p>
+              Proximidade e vínculos exploratórios, sem atribuição institucional.
+            </p>
+          </div>
+        </section>
+      }
+
+      @if (activeTab() === 'overview' && participants().length > 0) {
+        <section class="panel people-panel" aria-labelledby="people-title">
           <div class="panel-heading">
             <div>
-              <span class="eyebrow">Relatório de validação</span>
-              <h2 [id]="'import-summary-title-' + $index">
-                Resultado da importação: {{ batch.fileName }}
-              </h2>
+              <h2 id="people-title" tabindex="-1">Participantes</h2>
               <p>
-                Aba <strong>{{ batch.sheetName }}</strong>
-                @if (batch.participantType) {
-                  · tipo informado para o arquivo:
-                  <strong>{{ batch.participantType === 'tutor' ? 'Tutores' : 'Bolsistas' }}</strong>
-                }
-                . As linhas válidas foram adicionadas; erros estão neste resumo.
+                {{ filteredParticipants().length }} de {{ participants().length }} registros
+                correspondem aos filtros
               </p>
             </div>
-            <span class="report-status" [class.report-status--warning]="batch.linhasComErro > 0">
-              {{ batch.linhasComErro === 0 ? 'Importação concluída' : 'Revisão necessária' }}
-            </span>
+            <div class="filter-controls">
+              <button class="button button--small" type="button" (click)="goToMap()">Ir para o mapa</button>
+              <label class="check-control">
+                <input type="checkbox" [checked]="tutorFilter()" (change)="onTutorFilterChanged($event)" />
+                <span class="legend-dot legend-dot--tutor" aria-hidden="true"></span> Tutores
+              </label>
+              <label class="check-control">
+                <input type="checkbox" [checked]="fellowFilter()" (change)="onFellowFilterChanged($event)" />
+                <span class="legend-dot legend-dot--fellow" aria-hidden="true"></span> Bolsistas
+              </label>
+              <label class="field field--compact">
+                <span class="visually-hidden">Ordenar participantes</span>
+                <select [value]="participantSort()" (change)="onParticipantSortChanged($event)" aria-label="Ordenar participantes">
+                  <option value="name">Nome</option>
+                  <option value="city">Cidade</option>
+                  <option value="type">Tipo</option>
+                  <option value="source-row">Linha Excel</option>
+                </select>
+              </label>
+            </div>
           </div>
-          <div class="summary-pills">
-            <span
-              ><strong>{{ report.totalRows }}</strong> linhas com dados</span
-            >
-            <span
-              ><strong>{{ report.participants.length }}</strong> carregadas</span
-            >
-            @if (report.relationships; as relationships) {
-              <span
-                ><strong>{{ relationships.length }}</strong> vínculos importados</span
-              >
-            }
-            @if (report.participantsWithProvisionalIdentity) {
-              <span
-                ><strong>{{ report.participantsWithProvisionalIdentity }}</strong> identidades
-                provisórias (CPF mascarado)</span
-              >
-            }
-            <span
-              ><strong>{{ batch.linhasComErro }}</strong> linhas com erro (aba e linha)</span
-            >
-            <span
-              ><strong>{{ report.participantsWithoutCoordinates }}</strong> sem coordenadas</span
-            >
-            <span
-              ><strong>{{ report.issues.length }}</strong> avisos e erros</span
-            >
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Participante</th>
+                  <th scope="col">Tipo</th>
+                  <th scope="col">Cidade / UF</th>
+                  <th scope="col">Localização</th>
+                  <th scope="col">Linha</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (participant of pagedParticipants(); track participant.id) {
+                  <tr [class.participant-row--selected]="selectedParticipant()?.id === participant.id">
+                    <td>
+                      <button class="table-person-link" type="button" (click)="viewOnMap(participant)">
+                        {{ participant.name }}
+                        @if (selectedParticipant()?.id === participant.id) {
+                          <span class="participant-selection">Selecionado</span>
+                        }
+                      </button>
+                    </td>
+                    <td>
+                      <span class="type-badge" [class.type-badge--fellow]="participant.type === 'fellow'">
+                        {{ participant.type === 'tutor' ? 'Tutor' : 'Bolsista' }}
+                      </span>
+                    </td>
+                    <td>{{ participant.city || '—' }}{{ participant.state ? ' / ' + participant.state : '' }}</td>
+                    <td>
+                      @if (!participant.location) {
+                        Sem coordenadas
+                      } @else if (participant.location.source === 'municipal-centroid') {
+                        Centróide municipal (provisório)
+                      } @else {
+                        Coordenadas informadas
+                      }
+                    </td>
+                    <td>{{ participant.sourceRow }}</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td class="table-empty" colspan="5">
+                      <div class="table-empty-state">
+                        <strong>Nenhum participante corresponde aos filtros atuais.</strong>
+                        <button class="button button--small" type="button" (click)="resetViewFilters()">Limpar filtros</button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
           </div>
-          @if (report.issues.length > 0) {
-            <ul class="issue-list" aria-label="Erros e avisos da importação">
-              @for (issue of displayedIssues(report); track $index) {
-                <li [class.issue-list__item--error]="issue.severity === 'error'">
-                  <span class="issue-mark" aria-hidden="true">{{
-                    issue.severity === 'error' ? '!' : 'i'
-                  }}</span>
-                  <span>
-                    @if (issue.rowNumber !== null) {
-                      <strong>Linha {{ issue.rowNumber }}:</strong>
-                    }
-                    {{ issue.message }}
-                  </span>
-                </li>
-              }
-            </ul>
-            @if (report.issues.length > displayedIssues(report).length) {
-              <p class="field-hint">
-                Exibindo os primeiros {{ displayedIssues(report).length }} de
-                {{ report.issues.length }} itens.
+          @let participantsPageWindow = participantsPage();
+          @if (participantsPageWindow.pageCount > 1) {
+            <nav class="table-pagination" aria-label="Paginação: participantes">
+              <p class="table-pagination__status" role="status">
+                Exibindo {{ participantsPageWindow.start + 1 }}–{{ participantsPageWindow.end }} de
+                {{ participantsPageWindow.total }} participantes · página {{ participantsPageWindow.page + 1 }} de
+                {{ participantsPageWindow.pageCount }}
               </p>
-            }
-          } @else {
-            <p class="success-note">Nenhum erro ou aviso foi identificado.</p>
+              <div class="table-pagination__actions">
+                <button class="button button--small" type="button"
+                  [attr.aria-disabled]="participantsPageWindow.page === 0 ? 'true' : null"
+                  (click)="goToPage('participants', 0)">Primeira</button>
+                <button class="button button--small" type="button"
+                  [attr.aria-disabled]="participantsPageWindow.page === 0 ? 'true' : null"
+                  (click)="goToPage('participants', participantsPageWindow.page - 1)">Anterior</button>
+                <button class="button button--small" type="button"
+                  [attr.aria-disabled]="participantsPageWindow.page === participantsPageWindow.pageCount - 1 ? 'true' : null"
+                  (click)="goToPage('participants', participantsPageWindow.page + 1)">Próxima</button>
+                <button class="button button--small" type="button"
+                  [attr.aria-disabled]="participantsPageWindow.page === participantsPageWindow.pageCount - 1 ? 'true' : null"
+                  (click)="goToPage('participants', participantsPageWindow.pageCount - 1)">Última</button>
+              </div>
+            </nav>
           }
         </section>
       }
 
       @if (activeTab() === 'overview') {
-        <section class="page-heading">
-          <div>
-            <span class="eyebrow">Painel estratégico</span>
-            <h1 id="overview-title" tabindex="-1">Visão geral</h1>
-            <p>
-              Explore proximidade geográfica e compare opções. Nenhuma relação representa uma
-              atribuição institucional.
-            </p>
-          </div>
-          @if (participants().length > 0) {
-            <label class="search-field">
-              <span class="visually-hidden">Pesquisar participantes</span>
-              <span aria-hidden="true">⌕</span>
-              <input
-                type="search"
-                placeholder="Buscar nome ou cidade"
-                [value]="searchText()"
-                (input)="onSearchChanged($event)"
-              />
-            </label>
-          }
-        </section>
-
         @if (participants().length === 0) {
-          <section class="welcome-card panel">
-            <div class="welcome-illustration" aria-hidden="true">
-              <span class="welcome-ring welcome-ring--outer"></span>
-              <span class="welcome-ring welcome-ring--inner"></span>
-              <span class="welcome-pin welcome-pin--tutor">T</span>
-              <span class="welcome-pin welcome-pin--fellow">B</span>
-            </div>
+          <section class="welcome-card" aria-label="Importar dados">
             <div class="welcome-copy">
-              <span class="eyebrow">Comece pelos seus dados</span>
-              <h2>Transforme localizações em contexto estratégico</h2>
+              <h2>Importe tutores e bolsistas</h2>
               <p>
-                Importe uma planilha de tutores e bolsistas para validar os dados, visualizar os
-                pontos e comparar proximidades. Nenhum dado demonstrativo é exibido como se fosse
-                real.
+                Use uma planilha com tipo, nome e coordenadas ou município/IBGE.
+                XLSX, XLS ou CSV · até 10 MB.
               </p>
               <button
                 class="button button--primary"
@@ -515,9 +532,7 @@
               >
                 Importar Excel ou CSV
               </button>
-              <small
-                >Formatos aceitos: XLSX, XLS e CSV · até 10 MB · processamento no navegador</small
-              >
+              <small>Leitura local. Nenhum dado demonstrativo carregado.</small>
             </div>
           </section>
         } @else {
@@ -570,7 +585,7 @@
                   ? '—'
                   : (statistics().averageNearestStraightLineKm | number: '1.1-1') + ' km'
               }}</strong>
-              <span class="kpi-label">Média até o tutor mais próximo</span>
+              <span class="kpi-label">Média geodésica até o tutor mais próximo</span>
             </article>
             <article class="kpi-card">
               <div class="kpi-card__top">
@@ -640,65 +655,60 @@
       @if (activeTab() === 'simulations') {
         <section class="page-heading">
           <div>
-            <span class="eyebrow">Cenários de alocação</span>
             <h1 id="simulations-title" tabindex="-1">Simulações</h1>
-            <p>Compare as regras de alocação sem alterar os dados exibidos na Visão geral.</p>
+            <p>Compare cenários sem alterar a base importada.</p>
           </div>
         </section>
         <app-simulations
           [scenarios]="simulationScenarios()"
           [participants]="participants()"
           [loading]="geoStatus() === 'loading'"
+          (importRequested)="openFilePicker(fileInput)"
         />
       }
 
       <!-- O mapa permanece no DOM em todas as abas para preservar a instância Leaflet. -->
       <div class="map-workspace" [hidden]="activeTab() !== 'overview'">
-          <section class="panel map-scenario-panel" aria-labelledby="map-scenario-title">
-            <div class="panel-heading">
-              <div>
-                <h2 id="map-scenario-title">Dados exibidos no mapa</h2>
-                <p>O cenário só substitui a visualização; os vínculos importados são preservados.</p>
-              </div>
-              <label class="field field--compact" for="map-scenario">
-                <span>Cenário do mapa</span>
-                <select id="map-scenario" [value]="mapScenario()" (change)="onMapScenarioChanged($event)">
-                  <option value="imported">Vínculos importados</option>
-                  <option value="1">Simulação — mínimo 1 bolsista</option>
-                  <option value="2">Simulação — mínimo 2 bolsistas</option>
-                </select>
-              </label>
-            </div>
-            @if (allocationMode() === 'simulation') {
-              <p class="field-hint" role="status">
-                Cenário simulado: mínimo {{ simulationMinimum() }}, raio {{ allocationConfig.raioMaxKm }} km geodésicos
-                e máximo {{ allocationConfig.maximoPorTutor }} bolsistas por tutor.
-                Os indicadores no topo continuam referentes à base importada.
-              </p>
-              @if (selectedSimulation()?.error; as error) {
-                <p class="alert alert--error" role="alert">{{ error }}</p>
-              }
-            }
-          </section>
           <section class="workspace-grid">
             <article class="panel map-panel" aria-labelledby="map-title">
               <div class="panel-heading map-panel__heading">
-                <div>
-                  <span class="eyebrow">Distribuição geográfica</span>
-                  <h2 id="map-title">Mapa de participantes</h2>
-                  <p>
-                    Os círculos mostram raio geodésico em linha reta, não alcance rodoviário.
-                    Sem coordenada importada, o ponto usa o centróide do município (provisório).
-                  </p>
+                <div class="map-heading-row">
+                  <div>
+                    <h2 id="map-title" tabindex="-1">Mapa de participantes</h2>
+                    <p>Raios geodésicos, não rodoviários · centróides provisórios.</p>
+                  </div>
+                  @if (participants().length > 0) {
+                    <button class="button button--small" type="button" (click)="goToParticipants()">Voltar aos participantes</button>
+                  }
+                  <label class="field field--compact" for="map-scenario">
+                    <span>Cenário do mapa</span>
+                    <select id="map-scenario" [value]="mapScenario()" (change)="onMapScenarioChanged($event)">
+                      <option value="imported">Vínculos importados</option>
+                      <option value="1">Simulação — mínimo 1 bolsista</option>
+                      <option value="2">Simulação — mínimo 2 bolsistas</option>
+                    </select>
+                  </label>
                 </div>
+                @if (allocationMode() === 'simulation') {
+                  <p class="field-hint" role="status">
+                    Simulação: mínimo {{ simulationMinimum() }} · raio {{ allocationConfig.raioMaxKm }} km geodésicos
+                    · máximo {{ allocationConfig.maximoPorTutor }} bolsistas/tutor.
+                    Indicadores acima: base importada.
+                  </p>
+                  @if (selectedSimulation()?.error; as error) {
+                    <p class="alert alert--error" role="alert">{{ error }}</p>
+                  }
+                }
                 <div class="map-controls" role="group" aria-label="Camadas e filtros do mapa">
+                  <fieldset class="map-filter-group">
+                    <legend>Participantes e vínculos</legend>
                   <label class="check-control">
                     <input
                       type="checkbox"
                       [checked]="tutorFilter()"
                       (change)="onTutorFilterChanged($event)"
                     />
-                    Tutores
+                    <i class="legend-dot legend-dot--tutor" aria-hidden="true"></i> Tutores
                   </label>
                   <label class="check-control">
                     <input
@@ -706,7 +716,7 @@
                       [checked]="fellowFilter()"
                       (change)="onFellowFilterChanged($event)"
                     />
-                    Bolsistas
+                    <i class="legend-dot legend-dot--fellow" aria-hidden="true"></i> Bolsistas
                   </label>
                   <label class="check-control">
                     <input
@@ -716,6 +726,9 @@
                     />
                     Vínculos
                   </label>
+                  </fieldset>
+                  <fieldset class="map-filter-group">
+                    <legend>Pendências</legend>
                   <label class="check-control">
                     <input
                       type="checkbox"
@@ -732,6 +745,9 @@
                     />
                     {{ allocationMode() === 'simulation' ? 'Só participantes sem vínculo simulado' : 'Só tutores sem bolsista' }}
                   </label>
+                  </fieldset>
+                  <fieldset class="map-filter-group">
+                    <legend>Raios geodésicos</legend>
                   <label class="check-control">
                     <input
                       type="checkbox"
@@ -750,16 +766,9 @@
                     <span class="check-swatch check-swatch--130" aria-hidden="true"></span>
                     130 km (referência)
                   </label>
-                </div>
-              </div>
-              <div class="map-toolbar">
-                <div class="legend">
-                  <span><i class="legend-dot legend-dot--tutor" aria-hidden="true"></i> Tutor</span>
-                  <span
-                    ><i class="legend-dot legend-dot--fellow" aria-hidden="true"></i> Bolsista</span
-                  >
-                  <span><i class="legend-circle" aria-hidden="true"></i> Raio geodésico</span>
-                </div>
+                  </fieldset>
+                  <fieldset class="map-filter-group">
+                    <legend>Mapa base externo</legend>
                 <label class="check-control map-tiles-consent">
                   <input
                     type="checkbox"
@@ -768,6 +777,8 @@
                   />
                   <span>Carregar mapa base OpenStreetMap</span>
                 </label>
+                  </fieldset>
+                </div>
               </div>
               @if (missingLocationSummary().registros > 0) {
                 <section class="map-missing" aria-labelledby="map-missing-title">
@@ -829,11 +840,12 @@
             <aside class="panel detail-panel" aria-labelledby="detail-title">
               <div class="panel-heading">
                 <div>
-                  <span class="eyebrow">Detalhes</span>
-                  <h2 id="detail-title">Participante selecionado</h2>
+                  <h2 id="detail-title">{{ selectedParticipant() ? 'Participante selecionado' : 'Consultar participante' }}</h2>
                 </div>
               </div>
               @if (selectedParticipant(); as selected) {
+                <section class="detail-section" aria-label="Identificação">
+                  <h3>Identificação</h3>
                 <div class="selected-person">
                   <span
                     class="person-avatar"
@@ -846,6 +858,12 @@
                     <span>{{ selected.type === 'tutor' ? 'Médico tutor' : 'Bolsista' }}</span>
                   </div>
                 </div>
+                <dl class="detail-list">
+                  <div><dt>Linha de origem</dt><dd>{{ selected.sourceRow }}</dd></div>
+                </dl>
+                </section>
+                <section class="detail-section" aria-label="Localização">
+                  <h3>Localização</h3>
                 <dl class="detail-list">
                   <div>
                     <dt>Cidade / UF</dt>
@@ -870,11 +888,11 @@
                       }
                     </dd>
                   </div>
-                  <div>
-                    <dt>Linha de origem</dt>
-                    <dd>{{ selected.sourceRow }}</dd>
-                  </div>
                 </dl>
+                </section>
+                <section class="detail-section" aria-label="Situação">
+                  <h3>Situação</h3>
+                  <p>{{ selected.location ? 'Localização disponível no mapa.' : 'Sem coordenadas para exibição no mapa.' }}</p>
                 @if (selected.type === 'tutor') {
                   <p class="detail-tip">
                     Os raios de 50 e 130 km no mapa são centralizados neste tutor.
@@ -891,10 +909,14 @@
                 @if (selectedSimulationFellow(); as fellow) {
                   <p><strong>Sem tutor na simulação</strong> — {{ fellow.reason }}</p>
                 }
+                </section>
               } @else {
                 <div class="detail-empty">
                   <span aria-hidden="true">⌖</span>
-                  <p>Selecione um marcador no mapa ou uma pessoa na tabela para ver os detalhes.</p>
+                  <p>Selecione um marcador ou participante na tabela.</p>
+                  @if (participants().length > 0) {
+                    <button class="button button--small" type="button" (click)="goToParticipants()">Consultar participantes</button>
+                  }
                 </div>
               }
             </aside>
@@ -928,160 +950,69 @@
           }
       </div>
 
-      @if (activeTab() === 'overview') {
-        @if (participants().length > 0) {
-
-          <section class="panel people-panel" aria-labelledby="people-title">
-            <div class="panel-heading">
-              <div>
-                <span class="eyebrow">Base importada</span>
-                <h2 id="people-title">Participantes</h2>
-                <p>
-                  {{ filteredParticipants().length }} de {{ participants().length }} registros
-                  correspondem aos filtros
-                </p>
-              </div>
-              <div class="filter-controls">
-                <label class="check-control">
-                  <input
-                    type="checkbox"
-                    [checked]="tutorFilter()"
-                    (change)="onTutorFilterChanged($event)"
-                  />
-                  <span class="legend-dot legend-dot--tutor" aria-hidden="true"></span> Tutores
-                </label>
-                <label class="check-control">
-                  <input
-                    type="checkbox"
-                    [checked]="fellowFilter()"
-                    (change)="onFellowFilterChanged($event)"
-                  />
-                  <span class="legend-dot legend-dot--fellow" aria-hidden="true"></span> Bolsistas
-                </label>
-                <label class="field field--compact">
-                  <span class="visually-hidden">Ordenar participantes</span>
-                  <select
-                    [value]="participantSort()"
-                    (change)="onParticipantSortChanged($event)"
-                    aria-label="Ordenar participantes"
-                  >
-                    <option value="name">Nome</option>
-                    <option value="city">Cidade</option>
-                    <option value="type">Tipo</option>
-                    <option value="source-row">Linha Excel</option>
-                  </select>
-                </label>
-              </div>
+      @for (batch of importBatches(); track $index) {
+        @let report = batch.report;
+        <section class="import-summary panel" [attr.aria-labelledby]="'import-summary-title-' + $index">
+          <div class="panel-heading">
+            <div>
+              <h2 [id]="'import-summary-title-' + $index">Resultado da importação: {{ batch.fileName }}</h2>
+              <p>
+                Aba <strong>{{ batch.sheetName }}</strong>
+                @if (batch.participantType) {
+                  · tipo informado para o arquivo:
+                  <strong>{{ batch.participantType === 'tutor' ? 'Tutores' : 'Bolsistas' }}</strong>
+                }
+                . As linhas válidas foram adicionadas; erros estão neste resumo.
+              </p>
             </div>
-            <div class="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">Participante</th>
-                    <th scope="col">Tipo</th>
-                    <th scope="col">Cidade / UF</th>
-                    <th scope="col">Localização</th>
-                    <th scope="col">Linha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (participant of pagedParticipants(); track participant.id) {
-                    <tr>
-                      <td>
-                        <button
-                          class="table-person-link"
-                          type="button"
-                          (click)="viewOnMap(participant)"
-                        >
-                          {{ participant.name }}
-                        </button>
-                      </td>
-                      <td>
-                        <span
-                          class="type-badge"
-                          [class.type-badge--fellow]="participant.type === 'fellow'"
-                          >{{ participant.type === 'tutor' ? 'Tutor' : 'Bolsista' }}</span
-                        >
-                      </td>
-                      <td>
-                        {{ participant.city || '—'
-                        }}{{ participant.state ? ' / ' + participant.state : '' }}
-                      </td>
-                      <td>
-                        @if (!participant.location) {
-                          Sem coordenadas
-                        } @else if (participant.location.source === 'municipal-centroid') {
-                          Centróide municipal (provisório)
-                        } @else {
-                          Coordenadas informadas
-                        }
-                      </td>
-                      <td>{{ participant.sourceRow }}</td>
-                    </tr>
-                  } @empty {
-                    <tr>
-                      <td class="table-empty" colspan="5">
-                        Nenhum participante corresponde aos filtros atuais.
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
-            @let participantsPageWindow = participantsPage();
-            @if (participantsPageWindow.pageCount > 1) {
-              <nav class="table-pagination" aria-label="Paginação: participantes">
-                <p class="table-pagination__status" role="status">
-                  Exibindo {{ participantsPageWindow.start + 1 }}–{{ participantsPageWindow.end }} de
-                  {{ participantsPageWindow.total }} participantes · página {{ participantsPageWindow.page + 1 }} de
-                  {{ participantsPageWindow.pageCount }}
-                </p>
-                <div class="table-pagination__actions">
-                  <button
-                    class="button button--small"
-                    type="button"
-                    [attr.aria-disabled]="participantsPageWindow.page === 0 ? 'true' : null"
-                    (click)="goToPage('participants', 0)"
-                  >
-                    Primeira
-                  </button>
-                  <button
-                    class="button button--small"
-                    type="button"
-                    [attr.aria-disabled]="participantsPageWindow.page === 0 ? 'true' : null"
-                    (click)="goToPage('participants', participantsPageWindow.page - 1)"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    class="button button--small"
-                    type="button"
-                    [attr.aria-disabled]="
-                      participantsPageWindow.page === participantsPageWindow.pageCount - 1 ? 'true' : null
-                    "
-                    (click)="goToPage('participants', participantsPageWindow.page + 1)"
-                  >
-                    Próxima
-                  </button>
-                  <button
-                    class="button button--small"
-                    type="button"
-                    [attr.aria-disabled]="
-                      participantsPageWindow.page === participantsPageWindow.pageCount - 1 ? 'true' : null
-                    "
-                    (click)="goToPage('participants', participantsPageWindow.pageCount - 1)"
-                  >
-                    Última
-                  </button>
-                </div>
-              </nav>
+            <span class="report-status" [class.report-status--warning]="batch.linhasComErro > 0">
+              {{ batch.linhasComErro === 0 ? 'Importação concluída' : 'Revisão necessária' }}
+            </span>
+          </div>
+          <div class="summary-pills">
+            <span><strong>{{ report.totalRows }}</strong> linhas com dados</span>
+            <span><strong>{{ report.participants.length }}</strong> carregadas</span>
+            @if (report.relationships; as relationships) {
+              <span><strong>{{ relationships.length }}</strong> vínculos importados</span>
             }
-          </section>
-        }
-      } @else if (activeTab() === 'relationships') {
+            @if (report.participantsWithProvisionalIdentity) {
+              <span><strong>{{ report.participantsWithProvisionalIdentity }}</strong> identidades provisórias (CPF mascarado)</span>
+            }
+            <span><strong>{{ batch.linhasComErro }}</strong> linhas com erro (aba e linha)</span>
+            <span><strong>{{ report.participantsWithoutCoordinates }}</strong> sem coordenadas</span>
+            <span><strong>{{ report.issues.length }}</strong> avisos e erros</span>
+          </div>
+          @if (report.issues.length > 0) {
+            <details class="import-details">
+              <summary>Ver avisos e erros ({{ report.issues.length }})</summary>
+            <ul class="issue-list" aria-label="Erros e avisos da importação">
+              @for (issue of displayedIssues(report); track $index) {
+                <li [class.issue-list__item--error]="issue.severity === 'error'">
+                  <span class="issue-mark" aria-hidden="true">{{ issue.severity === 'error' ? '!' : 'i' }}</span>
+                  <span>
+                    @if (issue.rowNumber !== null) {
+                      <strong>Linha {{ issue.rowNumber }}:</strong>
+                    }
+                    {{ issue.message }}
+                  </span>
+                </li>
+              }
+            </ul>
+            @if (report.issues.length > displayedIssues(report).length) {
+              <p class="field-hint">
+                Exibindo os primeiros {{ displayedIssues(report).length }} de {{ report.issues.length }} itens.
+              </p>
+            }
+            </details>
+          } @else {
+            <p class="success-note">Nenhum erro ou aviso foi identificado.</p>
+          }
+        </section>
+      }
+
+      @if (activeTab() === 'relationships') {
         <section class="page-heading">
           <div>
-            <span class="eyebrow">Análise de proximidade</span>
             <h1 id="relationships-title" tabindex="-1">Relações e rotas</h1>
             <p>
               Compare pares próximos em linha reta e, mediante autorização, calcule distâncias
@@ -1112,7 +1043,6 @@
           <section class="panel" aria-labelledby="imported-relationships-title">
             <div class="panel-heading">
               <div>
-                <span class="eyebrow">Cruzamento por CPF</span>
                 <h2 id="imported-relationships-title">Vínculos informados na planilha</h2>
                 <p>
                   {{ visibleImportedRelationships().length }} de
@@ -1140,10 +1070,6 @@
                 </button>
               </div>
             </div>
-            <label class="search-field">
-              <span>Pesquisar vínculos por nome ou município</span>
-              <input type="search" [value]="searchText()" (input)="onSearchChanged($event)" />
-            </label>
             <p class="field-hint">
               Ordenados por KM crescente, ausentes ao final. CPFs são usados somente na leitura
               local para identificar participantes; não são exibidos nem exportados. Indicadores
@@ -1193,7 +1119,12 @@
                     </tr>
                   } @empty {
                     <tr>
-                      <td colspan="4">Nenhum vínculo corresponde à pesquisa.</td>
+                      <td colspan="4">
+                        <div class="table-empty-state">
+                          <strong>Nenhum vínculo corresponde à pesquisa.</strong>
+                          <button class="button button--small" type="button" (click)="resetViewFilters()">Limpar filtros</button>
+                        </div>
+                      </td>
                     </tr>
                   }
                 </tbody>
@@ -1266,7 +1197,7 @@
           <section class="empty-state panel">
             <span class="empty-state__icon" aria-hidden="true">⇄</span>
             <h2>Importe dados para analisar relações</h2>
-            <p>Os resultados aparecerão aqui após a validação de uma planilha.</p>
+            <p>XLSX, XLS ou CSV · até 10 MB. Leitura local, sem dados demonstrativos.</p>
             <button
               class="button button--primary"
               type="button"
@@ -1279,7 +1210,6 @@
           <section class="panel route-panel">
             <div class="panel-heading">
               <div>
-                <span class="eyebrow">Pré-seleção geográfica exploratória</span>
                 <h2>Pares tutor–bolsista próximos</h2>
                 <p>
                   {{ visibleProximityPairs().length }} pares dentro do raio geodésico de {{ allocationConfig.raioMaxKm }} km,
@@ -1336,6 +1266,7 @@
                   Pode não haver pares a até {{ allocationConfig.raioMaxKm }} km em linha reta, ou os filtros podem ocultar os
                   resultados. Isso não substitui uma análise de rota rodoviária.
                 </p>
+                <button class="button button--small" type="button" (click)="resetViewFilters()">Limpar filtros</button>
               </div>
             } @else {
               <div class="table-scroll">
@@ -1495,7 +1426,6 @@
           <section class="scenario-note panel">
             <span class="scenario-note__icon" aria-hidden="true">↗</span>
             <div>
-              <span class="eyebrow">Comparação exploratória</span>
               <h2>Ordene alternativas sem criar alocações</h2>
               <p>
                 Use “Rodoviária confirmada” para priorizar pares com rota calculada. Esta comparação
